@@ -70,6 +70,9 @@ Unit tests focus on individual modules and functions in isolation:
 - **commit-cleaner.test.ts**: Tests commit message cleaning and git filter-branch
 - **utils.test.ts**: Tests utility functions and cross-platform helpers
 - **main.test.ts**: Tests CLI argument parsing and command coordination
+- **pattern-validation.test.ts**: Tests directory pattern validation and safety
+- **file-pattern-loading.test.ts**: Tests loading patterns from files
+- **no-defaults-behavior.test.ts**: Tests `--no-defaults` flag behavior
 
 ### Integration Tests
 
@@ -78,6 +81,8 @@ Integration tests verify complete workflows and cross-module interactions:
 - **full-workflow.test.ts**: End-to-end cleaning workflows (files + commits)
 - **dependency-management.test.ts**: Complete dependency installation process
 - **cross-platform.test.ts**: Platform-specific behavior and compatibility
+- **pattern-matching.test.ts**: Tests directory pattern matching in real repositories
+- **cli-options.test.ts**: Tests CLI flag parsing for pattern options
 
 ## Test Utilities
 
@@ -129,6 +134,94 @@ Tests verify behavior across platforms:
 - **macOS**: Unix commands, case-insensitive filesystem handling
 - **Linux**: Unix commands, case-sensitive filesystem, symlinks
 
+## Directory Pattern Testing
+
+### Test Coverage (41 test steps across 5 test files)
+
+#### Pattern Validation Tests (`pattern-validation.test.ts`)
+
+Tests safety and validation of directory patterns:
+
+- **Invalid pattern rejection**: `../parent`, `/absolute`, `dir/subdir`, `*`, empty patterns
+- **Valid pattern acceptance**: `claudedocs`, `.serena`, `hidden-dirs`, `patterns-with-hyphens`
+- **Warning system**: Broad patterns (`temp`, `cache`, single chars) trigger warnings
+- **Edge cases**: Whitespace-only patterns, special characters
+
+#### File Pattern Loading Tests (`file-pattern-loading.test.ts`)
+
+Tests loading patterns from files:
+
+- **Basic loading**: Read patterns from file, one per line
+- **Comment handling**: Skip lines starting with `#`
+- **Whitespace handling**: Trim lines, skip empty lines
+- **Error handling**: Missing files, permission errors
+- **Edge cases**: UTF-8 content, long lines, mixed line endings
+- **File formats**: Empty files, comment-only files, mixed content
+
+#### No-Defaults Behavior Tests (`no-defaults-behavior.test.ts`)
+
+Tests the `--no-defaults` flag:
+
+- **Include defaults**: `excludeDefaults: false` includes Claude patterns
+- **Exclude defaults**: `excludeDefaults: true` excludes Claude patterns
+- **User-only mode**: Only user patterns when defaults disabled
+- **Nested patterns**: Handles nested Claude files correctly
+- **VS Code integration**: `.vscode/claude.json` file handling
+- **Temporary files**: Claude temp file pattern matching
+
+#### Pattern Matching Integration (`pattern-matching.test.ts`)
+
+Tests pattern matching in real Git repositories:
+
+- **Real repository testing**: Creates actual Git repos with directory structures
+- **User pattern matching**: Finds directories by basename at any depth
+- **Default integration**: Combines user patterns with Claude defaults
+- **Exclusion mode**: Tests `--no-defaults` flag behavior
+- **Complex structures**: Nested directories, multiple pattern matching
+
+#### CLI Options Integration (`cli-options.test.ts`)
+
+Tests CLI flag parsing:
+
+- **Help output**: New flags appear in `--help`
+- **Flag parsing**: `--include-dirs`, `--include-dirs-file`, `--no-defaults`
+- **Multiple flags**: Repeatable `--include-dirs` flags
+- **Error handling**: Invalid patterns rejected at CLI level
+- **File integration**: Pattern file loading through CLI
+- **Existing flag compatibility**: Works with `--files-only`, `--verbose`, etc.
+
+### Pattern Matching Behavior
+
+#### ✅ What Gets Matched
+
+- Directory names anywhere in repository history
+- Exact basename matches only (`claudedocs` matches `docs/claudedocs/`)
+- Case-sensitive matching
+- Hidden directories (`.serena`, `.cache`)
+- Directories with special characters (`my-docs`, `docs_v2`)
+
+#### ❌ What Gets Rejected
+
+- Partial matches (`temp` does NOT match `temporary`)
+- Path-based patterns (`docs/claudedocs` is invalid)
+- Parent directory references (`../parent`)
+- Absolute paths (`/usr/local`)
+- Wildcard-only patterns (`*`)
+
+### Running Pattern Tests
+
+```bash
+# Run all pattern-related tests
+deno test tests/unit/pattern-validation.test.ts --allow-all
+deno test tests/unit/file-pattern-loading.test.ts --allow-all
+deno test tests/unit/no-defaults-behavior.test.ts --allow-all
+deno test tests/integration/pattern-matching.test.ts --allow-all
+deno test tests/integration/cli-options.test.ts --allow-all
+
+# Run all pattern tests together
+deno test tests/unit/pattern-*.test.ts tests/unit/no-defaults-*.test.ts tests/integration/pattern-*.test.ts tests/integration/cli-*.test.ts --allow-all
+```
+
 ## Test Development Guidelines
 
 ### Writing New Tests
@@ -146,11 +239,11 @@ Deno.test("Module - Feature Group", async (t) => {
   await t.step("should test specific behavior", async () => {
     // Arrange
     const repo = await createTestRepo("test-name");
-    
+
     try {
       // Act
       const result = await functionUnderTest(repo.path);
-      
+
       // Assert
       assert(result.success);
       assertEquals(result.count, 5);
@@ -167,9 +260,12 @@ Deno.test("Module - Feature Group", async (t) => {
 For testing external dependencies:
 
 ```typescript
-const mockTool = await createMockTool("tool-name", `#!/bin/bash
+const mockTool = await createMockTool(
+  "tool-name",
+  `#!/bin/bash
 echo "Mock output"
-exit 0`);
+exit 0`,
+);
 
 try {
   const result = await runWithPath(["tool-name"], [mockTool.path]);
