@@ -1,9 +1,9 @@
 # Claude Cleaner
 
-A comprehensive TypeScript/Deno tool to remove Claude artifacts from Git repositories.
+A TypeScript/Deno tool to remove Claude artifacts from Git repositories.
 
-> [!IMPORTANT]
-> The tool runs in dry-run mode by default to preview changes. Use `--execute` to apply changes. Automatic backups are created, but prevention is better than recovery.
+> [!WARNING]
+> Claude Cleaner was written primarily by Claude Sonnet 4.0 with direction and design from \@tylerbutler. Caveat emptor.
 
 ## Table of Contents
 
@@ -17,29 +17,24 @@ A comprehensive TypeScript/Deno tool to remove Claude artifacts from Git reposit
 - [Safety Features](#safety-features)
 - [Troubleshooting](#troubleshooting)
 - [Frequently Asked Questions](#frequently-asked-questions)
-- [Performance Benchmarks](#performance-benchmarks)
 - [Development](#development)
 - [Contributing](#contributing)
 - [Acknowledgments](#acknowledgments)
 
 ## Overview
 
-Claude Cleaner is a professional-grade tool that removes Claude-related files, commit trailers, and other artifacts from Git repository history. It combines BFG Repo-Cleaner for efficient file removal with modern text processing for commit message cleaning, all wrapped in a user-friendly CLI.
+Claude Cleaner removes Claude-related files, commit trailers, and other artifacts from Git repository history. It combines BFG Repo-Cleaner for file removal with modern text processing for commit message cleaning.
 
 ## Features
 
-- 🚀 **Fast**: Uses BFG Repo-Cleaner for efficient Git history cleaning
 - 🔒 **Safe**: Dry-run mode, automatic backups, and rollback capabilities
 - 🌍 **Cross-platform**: Works on Windows, macOS, and Linux
 - 📦 **Self-contained**: Compiles to a single binary with dependency auto-installation
-- 🛠 **Modern**: Built with TypeScript and Deno for reliability and performance
-- 🧪 **Well-tested**: Comprehensive test suite with 100+ tests
 - 🎯 **Flexible**: Files-only, commits-only, or full cleaning modes
 
 ## What Gets Cleaned
 
-> [!NOTE]
-> Claude Cleaner targets specific files and commit patterns created by Claude Code. Your regular project files and commit messages remain untouched.
+Claude Cleaner targets specific files and commit patterns created by Claude Code. Your regular project files and commit messages remain untouched.
 
 ### Files Removed (Standard Mode)
 
@@ -58,72 +53,29 @@ The tool uses **exact basename matching** for safety. For example:
 - **`.vscode/claude.json`** - VSCode Claude extension settings
 - **Temporary Claude files** - Auto-generated temporary files
 
-> [!NOTE]
+> [!TIP]
 > Use `--include-dirs <name>` to match additional directories like `.claude-backup` or `claude-workspace` (matches by exact directory name anywhere in the repository)
 
-### Additional Files (With `--include-all-common-patterns`)
+### Extended Patterns (With `--include-all-common-patterns`)
 
-> [!NOTE]
-> This flag enables comprehensive cleanup by matching many more Claude-related file patterns. Always review dry-run output first.
+This flag enables comprehensive cleanup by matching many more Claude-related file patterns across multiple categories:
 
-**Configuration Files:**
+- **Configuration files** - Settings, workspace, environment configs
+- **Session & state** - Session data, cache, history files
+- **Temporary files** - Working files, drafts, backups
+- **Process files** - Lock files, PIDs, sockets
+- **Debug files** - Debug logs, traces, profiles
+- **Export files** - Archives, dumps, snapshots
+- **IDE integration** - IDE-specific Claude configs
+- **Documentation** - Notes, docs, instructions
+- **Scripts** - Shell scripts, utilities, helpers
+- **Hidden files** - Dotfiles like `.clauderc`
+- **Versioned files** - Numbered or versioned variants
 
-- `claude*.json|yaml|yml|toml|ini|config`
-- `claude-config*`, `claude-settings*`, `claude-workspace*`, `claude-env*`
+See [PATTERNS.md](PATTERNS.md) for the complete pattern reference with examples and detailed explanations.
 
-**Session & State Files:**
-
-- `claude-session*`, `claude-state*`, `claude-cache*`, `claude-history*`
-
-**Temporary & Working Files:**
-
-- `claude-temp*`, `claude-tmp*`, `claude-work*`, `claude-scratch*`, `claude-draft*`
-- `claude*.bak|backup|old|orig|save`
-- `claude-output*`, `claude-result*`, `claude-analysis*`, `claude-report*`
-
-**Process Files:**
-
-- `claude*.lock|pid|socket`
-- `claude-lock*`, `claude-process*`, `claude-run*`
-
-**Debug & Diagnostic Files:**
-
-- `claude-debug*`, `claude-trace*`, `claude-profile*`, `claude-diagnostic*`
-- `claude*.debug|trace|profile|diagnostic`
-
-**Export & Archive Files:**
-
-- `claude-export*`, `claude-archive*`, `claude-dump*`, `claude-snapshot*`
-
-**IDE Integration Files:**
-
-- Any files in `.vscode/`, `.idea/`, `.eclipse/` directories containing "claude"
-
-**Directories:**
-
-- `claude-workspace`, `claude-project`, `claude-sessions`, `claude-temp`, `claude-cache`, `claude-data`
-- Paths containing `/.claude-` or `/claude_`
-
-**Documentation Files:**
-
-- `claude-notes*.md|txt|rst`, `claude-docs*.md|txt|rst`, `claude-readme*.md|txt|rst`
-- `claude-instructions*.md|txt|rst`, `.claude-*.md|txt|rst`
-
-**Scripts & Executables:**
-
-- `claude-script*`, `claude-tool*`, `claude-utility*`, `claude-helper*`
-- `claude*.sh|bat|ps1|py|js|ts`
-
-**Hidden/Dotfiles:**
-
-- `.claude` followed by alphanumeric characters (e.g., `.claude-config`, `.clauderc`)
-
-**Numbered/Versioned Files:**
-
-- Any file matching `claude*[0-9]*` or `claude*v[0-9]*`
-
-> [!TIP]
-> Patterns use wildcards (`*`) to match variations. For example, `claude-session*` matches `claude-session`, `claude-session-123`, `claude-session.json`, etc.
+> [!WARNING]
+> The `--include-all-common-patterns` flag finds _many_ more files than standard mode. Always review the dry-run output first before using `--execute`.
 
 ### Commit Trailers Removed
 
@@ -135,8 +87,7 @@ The tool uses **exact basename matching** for safety. For example:
 
 ### Prerequisites
 
-> [!NOTE]
-> The tool automatically installs all required dependencies via [mise](https://mise.jdx.dev/) when using the `--auto-install` flag. Manual installation is optional.
+The tool automatically installs all required dependencies via [mise](https://mise.jdx.dev/) when using the `--auto-install` flag. Manual installation is optional.
 
 **Auto-installed dependencies:**
 
@@ -144,9 +95,6 @@ The tool uses **exact basename matching** for safety. For example:
 - sd (modern sed replacement)
 
 ### Install Claude Cleaner
-
-> [!TIP]
-> For most users, downloading the pre-built binary is the fastest option.
 
 ```bash
 # Option 1: Download pre-built binary (recommended)
@@ -168,14 +116,11 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 claude-cleaner check-deps --auto-install
 
 # 2. Preview changes without modifying anything (dry-run is the default)
-claude-cleaner --auto-install
+claude-cleaner
 
 # 3. Execute cleaning (only after reviewing dry-run output)
-claude-cleaner --execute --auto-install
+claude-cleaner --execute
 ```
-
-> [!TIP]
-> Run the dry-run command first to see exactly what will be changed before performing the actual cleaning.
 
 ## Usage
 
@@ -207,13 +152,13 @@ Commands:
 
 ```bash
 # Preview changes (default behavior)
-claude-cleaner --auto-install
+claude-cleaner
 
 # Execute cleaning after reviewing dry-run
-claude-cleaner --execute --auto-install
+claude-cleaner --execute
 
 # Clean specific repository
-claude-cleaner --execute --auto-install --repo-path /path/to/repo
+claude-cleaner --execute --repo-path /path/to/repo
 
 # Preview with verbose output
 claude-cleaner --verbose
@@ -240,30 +185,25 @@ claude-cleaner --commits-only --execute --branch feature/my-branch --auto-instal
 
 ### Comprehensive Cleaning
 
-> [!TIP]
-> Use `--include-all-common-patterns` for complete Claude artifact removal, especially for long-running projects or when preparing repositories for distribution.
+Use `--include-all-common-patterns` for complete Claude artifact removal, especially for long-running projects or when preparing repositories for distribution.
 
 ```bash
 # Preview comprehensive cleanup (recommended first)
 claude-cleaner --include-all-common-patterns --verbose
 
-# Execute complete cleanup - find ALL known Claude patterns
-claude-cleaner --include-all-common-patterns --execute --auto-install
+# Execute complete cleanup - find ALL known/possible Claude patterns
+claude-cleaner --include-all-common-patterns --execute
 
 # Preview comprehensive file-only cleanup
 claude-cleaner --include-all-common-patterns --files-only --verbose
 
-# Execute comprehensive file-only cleanup (preserve commit history)
-claude-cleaner --include-all-common-patterns --files-only --execute --auto-install
+# Execute comprehensive file-only cleanup
+claude-cleaner --include-all-common-patterns --files-only --execute
 ```
-
-> [!WARNING]
-> The `--include-all-common-patterns` flag finds many more files than standard mode. Always review the dry-run output first before using `--execute`.
 
 ### Advanced Workflows
 
-> [!NOTE]
-> These examples show advanced usage patterns for power users and troubleshooting scenarios.
+These examples show advanced usage patterns for power users and troubleshooting scenarios.
 
 ```bash
 # Manual dependency setup (alternative to --auto-install)
@@ -294,12 +234,11 @@ claude-cleaner --no-defaults --include-dirs "my-claude-files"
 
 ## How It Works
 
-> [!NOTE]
-> Claude Cleaner follows a systematic, safety-first approach to ensure your repository integrity while removing Claude artifacts.
+Claude Cleaner follows a systematic, safety-first approach to ensure your repository integrity while removing Claude artifacts.
 
 ### Step-by-Step Process
 
-1. **🔍 Dependency Check** - Verifies Java and sd are available (auto-installs via mise if needed)
+1. **🔍 Dependency Check** - Verifies Java, BFG Repo-Cleaner, and sd are available (auto-installs via mise if needed)
 2. **✅ Repository Validation** - Ensures you're in a valid Git repository with clean working tree
 3. **💾 Backup Creation** - Creates backup branches before making any changes
 4. **📁 File Removal** - Uses BFG Repo-Cleaner to efficiently remove Claude files from Git history
@@ -324,8 +263,7 @@ claude-cleaner --no-defaults --include-dirs "my-claude-files"
 
 ## Safety Features
 
-> [!IMPORTANT]
-> Claude Cleaner prioritizes safety with multiple protection mechanisms. However, always ensure your repository is backed up before running any cleaning operations.
+Claude Cleaner prioritizes safety with multiple protection mechanisms. However, always ensure your repository is backed up before running any cleaning operations.
 
 ### Automatic Backups
 
@@ -360,8 +298,7 @@ claude-cleaner --execute
 
 ## Troubleshooting
 
-> [!NOTE]
-> Most issues can be resolved by ensuring dependencies are installed and you're in a clean Git repository. Use `--verbose` for detailed error information.
+Most issues can be resolved by ensuring dependencies are installed and you're in a clean Git repository. Use `--verbose` for detailed error information.
 
 ### Common Issues
 
@@ -374,8 +311,7 @@ claude-cleaner --execute
 # Auto-install all dependencies (recommended)
 claude-cleaner check-deps --auto-install
 
-# Or install manually
-mise install java@temurin-21 sd
+# Or install tools manually
 ```
 
 #### "Not a Git repository" error
@@ -391,8 +327,7 @@ claude-cleaner --repo-path /path/to/git/repo --auto-install
 
 #### "Working tree not clean" error
 
-> [!WARNING]
-> Commit or stash your changes before running the cleaner to avoid losing work.
+Commit or stash your changes before running the cleaner to avoid losing work.
 
 ```bash
 # Option 1: Commit changes
@@ -429,8 +364,7 @@ claude-cleaner --help
 
 ### Recovery and Rollback
 
-> [!IMPORTANT]
-> If something goes wrong or you need to undo changes, use these recovery steps.
+If something goes wrong or you need to undo changes, use these recovery steps.
 
 ```bash
 # View available backups
@@ -453,7 +387,7 @@ git log --oneline -10
 ### Remote Repositories and Force Pushing
 
 > [!CAUTION]
-> Cleaning Git history rewrites commits, which requires force pushing to remote repositories. This affects all collaborators.
+> Cleaning Git history rewrites commits, which requires force pushing to remote repositories. Force pushing can disrupt team workflows. All collaborators must re-clone or reset their local repositories after you force push.
 
 **Before cleaning a shared repository:**
 
@@ -461,9 +395,6 @@ git log --oneline -10
 2. **Create remote backup**: `git push origin main:backup-main`
 3. **Clean locally**: Run claude-cleaner with `--execute`
 4. **Force push carefully**: `git push --force-with-lease origin main`
-
-> [!WARNING]
-> Force pushing can disrupt team workflows. All collaborators must re-clone or reset their local repositories after you force push.
 
 **Team recovery after force push:**
 
@@ -483,7 +414,7 @@ git clone <repository-url>
 ### Safety and Recovery
 
 **Q: Is it safe to use on important repositories?**\
-**A:** Yes! Claude Cleaner creates automatic backups and runs in dry-run mode by default. Always review the dry-run output before using `--execute`.
+**A:** Claude Cleaner creates automatic backups and runs in dry-run mode by default. Always review the dry-run output before using `--execute`.
 
 **Q: Can I undo the changes?**\
 **A:** Yes, backup branches are created automatically. Use `git checkout backup/pre-claude-clean-...` to restore your repository.
@@ -491,13 +422,10 @@ git clone <repository-url>
 **Q: What if something goes wrong during cleaning?**\
 **A:** Stop the process and restore from the automatic backup branch. Check the troubleshooting section for specific error resolution.
 
-### Performance and Compatibility
-
-**Q: Does it work with large repositories?**\
-**A:** Yes, BFG Repo-Cleaner is optimized for large repositories and is much faster than `git filter-branch`.
+### Compatibility
 
 **Q: What operating systems are supported?**\
-**A:** Windows, macOS, and Linux are all supported with cross-platform compatibility.
+**A:** Windows, macOS, and Linux are all supported, but Windows is not well-tested.
 
 ### Usage Options
 
@@ -505,22 +433,11 @@ git clone <repository-url>
 **A:** Use `--files-only` or `--commits-only` flags for selective cleaning operations.
 
 **Q: Can I use it in CI/CD pipelines?**\
-**A:** Yes, use `--auto-install` for dependency management and ensure proper permissions are configured.
-
-## Performance Benchmarks
-
-> [!NOTE]
-> Performance depends on repository size, number of Claude artifacts, and system specifications. These are typical measurements on modern hardware.
-
-| Repository Size                   | Typical Duration |
-| --------------------------------- | ---------------- |
-| **Small repos** (< 100 commits)   | < 10 seconds     |
-| **Medium repos** (< 1000 commits) | < 30 seconds     |
-| **Large repos** (> 1000 commits)  | < 2 minutes      |
+**A:** It should work but has not been tested. Use `--auto-install` for dependency management and ensure proper permissions are configured.
 
 ## Development
 
-See [DEV.md](DEV.md) for development setup, testing guidelines, and contribution instructions. For detailed pattern matching test documentation, see [tests/README-pattern-tests.md](tests/README-pattern-tests.md).
+See [DEV.md](DEV.md) for development setup, testing guidelines, and contribution instructions.
 
 ## Contributing
 

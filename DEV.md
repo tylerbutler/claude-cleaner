@@ -56,31 +56,10 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 
 ## Testing
 
-### Test Structure
-
-```
-tests/
-├── unit/           # Unit tests for individual modules
-├── integration/    # Integration tests for full workflows
-├── utils/          # Test utilities and helpers
-├── README-pattern-tests.md  # Comprehensive pattern matching documentation
-└── run-all-tests.ts # Test runner script
-```
-
 > [!NOTE]
-> See `tests/README-pattern-tests.md` for detailed documentation on pattern matching behavior and test coverage.
+> See [tests/README.md](tests/README.md) for comprehensive test documentation including pattern matching tests, test utilities, and development guidelines.
 
-### Test Coverage
-
-The comprehensive test suite includes **41 test steps** covering:
-
-- **Pattern matching behavior**: Exact basename matching, safety validation, warning system
-- **Directory pattern system**: Custom prefix/suffix/substring matching
-- **Default patterns**: Standard Claude file and directory removal
-- **Extended patterns**: Comprehensive cleanup with `--include-all-common-patterns`
-- **Integration workflows**: End-to-end cleaning operations
-
-### Running Tests
+### Quick Test Commands
 
 ```bash
 # All tests
@@ -95,12 +74,15 @@ deno task test:verbose
 deno test --allow-all tests/unit/dependency-manager.test.ts
 ```
 
-### Test Utilities
+### Test Coverage Highlights
 
-- `createTestRepo()`: Creates temporary Git repositories
-- `addClaudeArtifacts()`: Adds Claude files to repositories
-- `assertNoClaudeArtifacts()`: Assertion for clean content
-- `createMockTool()`: Creates mock external tools
+- **41 test steps** for directory pattern matching
+- Unit tests for all core modules
+- Integration tests for full workflows
+- Cross-platform compatibility tests
+- Pattern validation and safety tests
+
+For detailed information on test structure, utilities, and development guidelines, see [tests/README.md](tests/README.md).
 
 ## Troubleshooting
 
@@ -208,7 +190,7 @@ Deno.test("Module - Feature", async (t) => {
 
 - [README.md](README.md) - User-facing documentation and usage examples
 - [CLAUDE.md](CLAUDE.md) - Development guidance for Claude Code
-- [tests/README-pattern-tests.md](tests/README-pattern-tests.md) - Comprehensive pattern matching test documentation
+- [tests/README.md](tests/README.md) - Comprehensive test documentation
 
 ## Dependency Management
 
