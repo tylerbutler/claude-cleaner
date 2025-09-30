@@ -3,8 +3,8 @@
  */
 
 import { assert } from "@std/assert";
-import { join } from "@std/path";
 import { ensureDir } from "@std/fs";
+import { join } from "@std/path";
 
 async function createTestRepo(tempDir: string): Promise<string> {
   const repoPath = join(tempDir, "test-repo");
@@ -37,12 +37,33 @@ async function createTestRepo(tempDir: string): Promise<string> {
   return repoPath;
 }
 
-async function createTestFiles(repoPath: string, files: Record<string, string>) {
+async function createTestFiles(
+  repoPath: string,
+  files: Record<string, string>,
+) {
+  const git = async (args: string[]) => {
+    const process = new Deno.Command("git", {
+      args,
+      cwd: repoPath,
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const result = await process.output();
+    if (!result.success) {
+      const stderr = new TextDecoder().decode(result.stderr);
+      throw new Error(`Git command failed: ${args.join(" ")}\n${stderr}`);
+    }
+  };
+
   for (const [filePath, content] of Object.entries(files)) {
     const fullPath = join(repoPath, filePath);
     await ensureDir(join(fullPath, ".."));
     await Deno.writeTextFile(fullPath, content);
   }
+
+  // Commit all files to git history so they can be detected
+  await git(["add", "-A"]);
+  await git(["commit", "-m", "Add test files"]);
 }
 
 async function runClaude(
@@ -74,16 +95,22 @@ Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
   await t.step("should reject conflicting flags", async () => {
     const repoPath = await createTestRepo(tempDir);
 
-    const result = await runClaude([
-      "--repo-path",
-      repoPath,
-      "--include-all-common-patterns",
-      "--no-defaults",
-      "--files-only",
-    ], cliDir);
+    const result = await runClaude(
+      [
+        "--repo-path",
+        repoPath,
+        "--include-all-common-patterns",
+        "--no-defaults",
+        "--files-only",
+      ],
+      cliDir,
+    );
 
     assert(!result.success, "Should fail with conflicting flags");
-    assert(result.stderr.includes("cannot be used together"), "Should show conflict error message");
+    assert(
+      result.stderr.includes("cannot be used together"),
+      "Should show conflict error message",
+    );
 
     await Deno.remove(repoPath, { recursive: true });
   });
@@ -107,13 +134,16 @@ Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
     await ensureDir(join(repoPath, ".vscode"));
     await Deno.writeTextFile(join(repoPath, ".vscode/claude.json"), "{}");
 
-    const result = await runClaude([
-      "--repo-path",
-      repoPath,
-      "--include-all-common-patterns",
-      "--files-only",
-      "--verbose",
-    ], cliDir);
+    const result = await runClaude(
+      [
+        "--repo-path",
+        repoPath,
+        "--include-all-common-patterns",
+        "--files-only",
+        "--verbose",
+      ],
+      cliDir,
+    );
 
     assert(result.success, `Command should succeed. stderr: ${result.stderr}`);
 
@@ -135,7 +165,9 @@ Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
 
     // Should show appropriate reasons for different pattern types
     assert(result.stdout.includes("Claude project configuration file"));
-    assert(result.stdout.includes("Claude configuration file (extended pattern)"));
+    assert(
+      result.stdout.includes("Claude configuration file (extended pattern)"),
+    );
     assert(result.stdout.includes("Claude session/state file"));
     assert(result.stdout.includes("Claude temporary/working file"));
     assert(result.stdout.includes("Claude process/lock file"));
@@ -143,36 +175,40 @@ Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
     await Deno.remove(repoPath, { recursive: true });
   });
 
-  await t.step("should work with regular defaults when flag not used", async () => {
-    const repoPath = await createTestRepo(tempDir);
+  await t.step(
+    "should work with regular defaults when flag not used",
+    async () => {
+      const repoPath = await createTestRepo(tempDir);
 
-    // Create both default and extended patterns
-    await createTestFiles(repoPath, {
-      "CLAUDE.md": "# Claude config",
-      ".claude/settings.json": "{}",
-      "claude.config.json": "{}", // This should NOT be found without the flag
-      "claude-session-123.dat": "session", // This should NOT be found without the flag
-    });
+      // Create both default and extended patterns
+      await createTestFiles(repoPath, {
+        "CLAUDE.md": "# Claude config",
+        ".claude/settings.json": "{}",
+        "claude.config.json": "{}", // This should NOT be found without the flag
+        "claude-session-123.dat": "session", // This should NOT be found without the flag
+      });
 
-    const result = await runClaude([
-      "--repo-path",
-      repoPath,
-      "--files-only",
-      "--verbose",
-    ], cliDir);
+      const result = await runClaude(
+        ["--repo-path", repoPath, "--files-only", "--verbose"],
+        cliDir,
+      );
 
-    assert(result.success, `Command should succeed. stderr: ${result.stderr}`);
+      assert(
+        result.success,
+        `Command should succeed. stderr: ${result.stderr}`,
+      );
 
-    // Should find default patterns
-    assert(result.stdout.includes("CLAUDE.md"));
-    assert(result.stdout.includes(".claude"));
+      // Should find default patterns
+      assert(result.stdout.includes("CLAUDE.md"));
+      assert(result.stdout.includes(".claude"));
 
-    // Should NOT find extended patterns
-    assert(!result.stdout.includes("claude.config.json"));
-    assert(!result.stdout.includes("claude-session-123.dat"));
+      // Should NOT find extended patterns
+      assert(!result.stdout.includes("claude.config.json"));
+      assert(!result.stdout.includes("claude-session-123.dat"));
 
-    await Deno.remove(repoPath, { recursive: true });
-  });
+      await Deno.remove(repoPath, { recursive: true });
+    },
+  );
 
   await t.step("should show help for the new flag", async () => {
     const result = await runClaude(["--help"], cliDir);
@@ -186,7 +222,10 @@ Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
       result.stdout.includes("ALL known common Claude patterns"),
       "Should show descriptive help text",
     );
-    assert(result.stdout.includes("complete cleanup"), "Should mention complete cleanup use case");
+    assert(
+      result.stdout.includes("complete cleanup"),
+      "Should mention complete cleanup use case",
+    );
 
     // Should not conflict with other options in help display
     assert(result.stdout.includes("--no-defaults"));
@@ -204,24 +243,30 @@ Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
     });
 
     // Test with --verbose
-    const result1 = await runClaude([
-      "--repo-path",
-      repoPath,
-      "--include-all-common-patterns",
-      "--files-only",
-      "--verbose",
-    ], cliDir);
+    const result1 = await runClaude(
+      [
+        "--repo-path",
+        repoPath,
+        "--include-all-common-patterns",
+        "--files-only",
+        "--verbose",
+      ],
+      cliDir,
+    );
 
     assert(result1.success, "Should work with --verbose");
     assert(result1.stdout.includes("claude.config.json"));
 
     // Test with --files-only
-    const result2 = await runClaude([
-      "--repo-path",
-      repoPath,
-      "--include-all-common-patterns",
-      "--files-only",
-    ], cliDir);
+    const result2 = await runClaude(
+      [
+        "--repo-path",
+        repoPath,
+        "--include-all-common-patterns",
+        "--files-only",
+      ],
+      cliDir,
+    );
 
     assert(result2.success, "Should work with --files-only");
 
@@ -245,26 +290,31 @@ Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
     });
 
     // Run without the flag
-    const resultDefault = await runClaude([
-      "--repo-path",
-      repoPath,
-      "--files-only",
-      "--verbose",
-    ], cliDir);
+    const resultDefault = await runClaude(
+      ["--repo-path", repoPath, "--files-only", "--verbose"],
+      cliDir,
+    );
 
     // Run with the flag
-    const resultAll = await runClaude([
-      "--repo-path",
-      repoPath,
-      "--include-all-common-patterns",
-      "--files-only",
-      "--verbose",
-    ], cliDir);
+    const resultAll = await runClaude(
+      [
+        "--repo-path",
+        repoPath,
+        "--include-all-common-patterns",
+        "--files-only",
+        "--verbose",
+      ],
+      cliDir,
+    );
 
-    assert(resultDefault.success && resultAll.success, "Both commands should succeed");
+    assert(
+      resultDefault.success && resultAll.success,
+      "Both commands should succeed",
+    );
 
     // Count files found
-    const defaultFileCount = (resultDefault.stdout.match(/📄|📂/g) || []).length;
+    const defaultFileCount = (resultDefault.stdout.match(/📄|📂/g) || [])
+      .length;
     const allFileCount = (resultAll.stdout.match(/📄|📂/g) || []).length;
 
     assert(

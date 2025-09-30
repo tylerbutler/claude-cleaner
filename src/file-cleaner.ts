@@ -1,6 +1,137 @@
-import { $, CommandBuilder } from "https://deno.land/x/dax@0.36.0/mod.ts";
 import { basename, join } from "https://deno.land/std@0.208.0/path/mod.ts";
-import { AppError, dirExists, fileExists, type Logger } from "./utils.ts";
+import { $, CommandBuilder } from "https://deno.land/x/dax@0.36.0/mod.ts";
+import { AppError, dirExists, fileExists, formatGitRef, type Logger } from "./utils.ts";
+
+// Claude file pattern definitions
+interface PatternDefinition {
+  pattern: RegExp;
+  reason: string;
+}
+
+const EXTENDED_CLAUDE_PATTERNS: PatternDefinition[] = [
+  // Configuration files
+  {
+    pattern: /^\.?claude[-_.].*\.(json|yaml|yml|toml|ini|config)$/i,
+    reason: "Claude configuration file (extended pattern)",
+  },
+  {
+    pattern: /^claude[-_]?(config|settings|workspace|env).*$/i,
+    reason: "Claude workspace/settings file",
+  },
+
+  // Session and state files
+  {
+    pattern: /^\.?claude[-_]?(session|state|cache|history).*$/i,
+    reason: "Claude session/state file",
+  },
+  {
+    pattern: /^\.?claude[-_.](session|state|cache|history)$/i,
+    reason: "Claude session/state file",
+  },
+
+  // Backup files (must come before numbered files to avoid conflict)
+  {
+    pattern: /^\.?claude[-_.].*\.(bak|backup|old|orig|save)$/i,
+    reason: "Claude backup file",
+  },
+  {
+    pattern: /^\.?claude\.(bak|backup|old|orig|save)$/i,
+    reason: "Claude backup file",
+  },
+
+  // Temporary and working files
+  {
+    pattern: /^\.?claude[-_]?(temp|tmp|work|scratch|draft).*$/i,
+    reason: "Claude temporary/working file",
+  },
+  {
+    pattern: /^\.?claude\.(temp|tmp|work|scratch|draft)$/i,
+    reason: "Claude temporary/working file",
+  },
+  {
+    pattern: /^\.?claude[-_]?(output|result|analysis|report).*$/i,
+    reason: "Claude output/analysis file",
+  },
+
+  // Lock and process files
+  {
+    pattern: /^\.?claude.*\.(lock|pid|socket)$/i,
+    reason: "Claude process/lock file",
+  },
+  {
+    pattern: /^\.?claude[-_]?(lock|process|run).*$/i,
+    reason: "Claude process/lock file",
+  },
+
+  // Debug and diagnostic files
+  {
+    pattern: /^\.?claude[-_]?(debug|trace|profile|diagnostic).*$/i,
+    reason: "Claude debug/diagnostic file",
+  },
+  {
+    pattern: /^\.?claude.*\.(debug|trace|profile|diagnostic)$/i,
+    reason: "Claude debug/diagnostic file",
+  },
+  {
+    pattern: /^\.?claude\.(diagnostic|lock|pid|socket)$/i,
+    reason: "Claude debug/diagnostic file",
+  },
+
+  // Export and archive files
+  {
+    pattern: /^\.?claude[-_]?(export|archive|dump|snapshot).*$/i,
+    reason: "Claude export/archive file",
+  },
+  {
+    pattern: /^\.?claude[-_.].*\.(export|archive|dump|snapshot)$/i,
+    reason: "Claude export/archive file",
+  },
+
+  // Workspace directories
+  {
+    pattern: /^\.?claude[-_]?(workspace|project|sessions?|temp|cache|data)$/i,
+    reason: "Claude workspace directory",
+  },
+
+  // Documentation files
+  {
+    pattern: /^claude[-_]?(notes?|docs?|readme|instructions?).*\.(md|txt|rst)$/i,
+    reason: "Claude documentation file",
+  },
+  {
+    pattern: /^\.claude[-_.].*\.(notes?|md|txt|rst)$/i,
+    reason: "Claude documentation file",
+  },
+
+  // Scripts and executables
+  {
+    pattern: /^\.?claude[-_]?(script|tool|utility|helper).*$/i,
+    reason: "Claude script/utility file",
+  },
+  {
+    pattern: /^\.?claude[-_.].*\.(sh|bat|ps1|py|js|ts)$/i,
+    reason: "Claude script/utility file",
+  },
+
+  // Hidden files and dotfiles
+  { pattern: /^\.claude[a-z0-9_-]+$/i, reason: "Claude hidden/dot file" },
+
+  // Numbered/versioned files (must come after backup files)
+  {
+    pattern: /^\.?claude[-_]?.*[0-9]+.*$/i,
+    reason: "Claude numbered/versioned file",
+  },
+  {
+    pattern: /^\.?claude.*v[0-9]+.*$/i,
+    reason: "Claude numbered/versioned file",
+  },
+
+  // OS-specific files
+  {
+    pattern: /^\.?claude[-_.].*\.(DS_Store|Thumbs\.db|desktop\.ini)$/i,
+    reason: "Claude OS-specific file",
+  },
+];
 
 export interface FileCleanerOptions {
   dryRun: boolean;
@@ -27,7 +158,10 @@ export class FileCleaner {
   private logger: Logger;
   private bfgPath: string | null = null;
 
-  constructor(private options: FileCleanerOptions, logger: Logger) {
+  constructor(
+    private options: FileCleanerOptions,
+    logger: Logger,
+  ) {
     this.logger = logger;
   }
 
@@ -54,29 +188,70 @@ export class FileCleaner {
       // Remove duplicates
       const uniqueFiles = [...new Set(historicalFiles)];
 
-      this.logger.verbose(`Checking ${uniqueFiles.length} files from Git history...`);
+      this.logger.verbose(
+        `Checking ${uniqueFiles.length} files from Git history...`,
+      );
+
+      // Track directories we've already added
+      const addedPaths = new Set<string>();
 
       // Check each file against our patterns
       for (const relativePath of uniqueFiles) {
         if (this.isTargetFile(relativePath, relativePath)) {
-          // Determine if it's a directory or file based on path
-          const isDirectory = relativePath.endsWith("/") ||
-            uniqueFiles.some((f) => f.startsWith(relativePath + "/"));
+          // Extract parent directories from the matched file path
+          const parts = relativePath.split("/");
+          const directories: string[] = [];
 
-          // Find the earliest commit for this file
-          const earliestCommit = await this.findEarliestCommit(relativePath);
-
-          const fileEntry: ClaudeFile = {
-            path: relativePath,
-            type: isDirectory ? "directory" : "file",
-            reason: this.getFileReason(relativePath),
-          };
-
-          if (earliestCommit) {
-            fileEntry.earliestCommit = earliestCommit;
+          // Build up directory paths (e.g., ".claude" from ".claude/settings.json")
+          for (let i = 0; i < parts.length - 1; i++) {
+            const dirPath = parts.slice(0, i + 1).join("/");
+            if (dirPath && !addedPaths.has(dirPath)) {
+              directories.push(dirPath);
+            }
           }
 
-          claudeFiles.push(fileEntry);
+          // Add all parent directories first
+          for (const dirPath of directories) {
+            if (this.isTargetFile(dirPath, dirPath)) {
+              const earliestCommit = await this.findEarliestCommit(dirPath);
+
+              const dirEntry: ClaudeFile = {
+                path: dirPath,
+                type: "directory",
+                reason: this.getFileReason(dirPath),
+              };
+
+              if (earliestCommit) {
+                dirEntry.earliestCommit = earliestCommit;
+              }
+
+              claudeFiles.push(dirEntry);
+              addedPaths.add(dirPath);
+            }
+          }
+
+          // Then add the file itself if not already added
+          if (!addedPaths.has(relativePath)) {
+            // Determine if it's a directory or file based on path
+            const isDirectory = relativePath.endsWith("/") ||
+              uniqueFiles.some((f) => f.startsWith(relativePath + "/"));
+
+            // Find the earliest commit for this file
+            const earliestCommit = await this.findEarliestCommit(relativePath);
+
+            const fileEntry: ClaudeFile = {
+              path: relativePath,
+              type: isDirectory ? "directory" : "file",
+              reason: this.getFileReason(relativePath),
+            };
+
+            if (earliestCommit) {
+              fileEntry.earliestCommit = earliestCommit;
+            }
+
+            claudeFiles.push(fileEntry);
+            addedPaths.add(relativePath);
+          }
         }
       }
     } catch (error) {
@@ -87,16 +262,19 @@ export class FileCleaner {
       );
     }
 
-    this.logger.verbose(`Found ${claudeFiles.length} files/directories to remove from Git history`);
+    this.logger.verbose(
+      `Found ${claudeFiles.length} files/directories to remove from Git history`,
+    );
     return claudeFiles;
   }
 
   private async findEarliestCommit(filePath: string): Promise<
-    {
+    | {
       hash: string;
       date: string;
       message: string;
-    } | undefined
+    }
+    | undefined
   > {
     try {
       // Find the earliest commit that added this file
@@ -175,7 +353,8 @@ export class FileCleaner {
 
       // Warn about potentially broad patterns
       if (
-        pattern.length === 1 || ["temp", "tmp", "cache", "build"].includes(pattern.toLowerCase())
+        pattern.length === 1 ||
+        ["temp", "tmp", "cache", "build"].includes(pattern.toLowerCase())
       ) {
         this.logger.warn(
           `Pattern '${pattern}' may match many directories. Use dry-run to preview before executing.`,
@@ -185,16 +364,18 @@ export class FileCleaner {
   }
 
   private isTargetFile(_fullPath: string, relativePath: string): boolean {
-    // Check user-defined directory patterns first
-    if (this.matchesUserPatterns(relativePath)) return true;
-
     // If --include-all-common-patterns is enabled, use comprehensive patterns
     if (this.options.includeAllCommonPatterns) {
       return this.isAllCommonPatternsFile(relativePath);
     }
 
+    // Check user-defined directory patterns first
+    if (this.matchesUserPatterns(relativePath)) return true;
+
     // Check default Claude patterns (unless disabled)
-    if (!this.options.excludeDefaults && this.isClaudeFile(relativePath)) return true;
+    if (!this.options.excludeDefaults && this.isClaudeFile(relativePath)) {
+      return true;
+    }
 
     return false;
   }
@@ -202,9 +383,18 @@ export class FileCleaner {
   private matchesUserPatterns(relativePath: string): boolean {
     const fileName = basename(relativePath);
 
-    // Check if this directory name matches any user patterns
+    // Check if the file/directory name itself matches
     for (const pattern of this.options.includeDirectories) {
       if (fileName === pattern) return true;
+    }
+
+    // Check if any parent directory in the path matches
+    const parts = relativePath.split("/");
+    for (let i = 0; i < parts.length - 1; i++) {
+      const dirName = parts[i];
+      for (const pattern of this.options.includeDirectories) {
+        if (dirName === pattern) return true;
+      }
     }
 
     return false;
@@ -217,17 +407,44 @@ export class FileCleaner {
     if (fileName === "CLAUDE.md") return true;
 
     // Claude directories
-    if (fileName === ".claude" || relativePath.includes("/.claude/")) return true;
+    if (
+      fileName === ".claude" ||
+      relativePath.includes("/.claude/") ||
+      relativePath.startsWith(".claude/")
+    ) {
+      return true;
+    }
 
     // Common MCP server directories
-    if (fileName === "claudedocs" || relativePath.includes("/claudedocs/")) return true;
-    if (fileName === ".serena" || relativePath.includes("/.serena/")) return true;
+    if (
+      fileName === "claudedocs" ||
+      relativePath.includes("/claudedocs/") ||
+      relativePath.startsWith("claudedocs/")
+    ) {
+      return true;
+    }
+    if (
+      fileName === ".serena" ||
+      relativePath.includes("/.serena/") ||
+      relativePath.startsWith(".serena/")
+    ) {
+      return true;
+    }
 
     // VSCode Claude configuration
-    if (relativePath.includes("/.vscode/claude.json")) return true;
+    if (
+      relativePath.includes("/.vscode/claude.json") ||
+      relativePath.startsWith(".vscode/claude.json")
+    ) {
+      return true;
+    }
 
     // Temporary Claude files (common patterns)
-    if (fileName.startsWith("claude-") && fileName.includes("temp")) return true;
+    // Match patterns like: claude-temp.log, claude-temp-123.log, claude-session-temp.log
+    if (fileName.startsWith("claude-") && fileName.includes("temp")) {
+      return true;
+    }
+    // Match patterns like: .claude.tmp, .claude_session.tmp, claude.log
     if (fileName.match(/^\.?claude.*\.(tmp|temp|log)$/i)) return true;
 
     return false;
@@ -241,83 +458,61 @@ export class FileCleaner {
     // All current default patterns
     if (this.isClaudeFile(relativePath)) return true;
 
-    // Extended Claude workspace and configuration files (be more specific to avoid false positives)
-    if (fileName.match(/^\.?claude[-_.].*\.(json|yaml|yml|toml|ini|config)$/i)) return true;
-    if (fileName.match(/^claude[-_]?(config|settings|workspace|env).*$/i)) return true;
+    // Check extended patterns using data-driven approach
+    for (const { pattern } of EXTENDED_CLAUDE_PATTERNS) {
+      if (fileName.match(pattern)) return true;
+    }
 
-    // Claude session and state files
-    if (fileName.match(/^\.?claude[-_]?(session|state|cache|history).*$/i)) return true;
-    if (fileName.match(/^\.?claude[-_.](session|state|cache|history)$/i)) return true;
-
-    // Claude temporary and working files (expanded patterns)
-    if (fileName.match(/^\.?claude[-_]?(temp|tmp|work|scratch|draft).*$/i)) return true;
-    if (fileName.match(/^\.?claude\.(temp|tmp|work|scratch|draft)$/i)) return true; // Added for claude.draft
-    if (fileName.match(/^\.?claude[-_.].*\.(bak|backup|old|orig|save)$/i)) return true;
-    if (fileName.match(/^\.?claude[-_]?(output|result|analysis|report).*$/i)) return true;
-
-    // Claude lock and process files - more flexible patterns
-    if (fileName.match(/^\.?claude.*\.(lock|pid|socket)$/i)) return true;
-    if (fileName.match(/^\.?claude[-_]?(lock|process|run).*$/i)) return true;
-
-    // Claude debug and diagnostic files - more flexible patterns
-    if (fileName.match(/^\.?claude[-_]?(debug|trace|profile|diagnostic).*$/i)) return true;
-    if (fileName.match(/^\.?claude.*\.(debug|trace|profile|diagnostic)$/i)) return true;
-    if (fileName.match(/^\.?claude\.(diagnostic|lock|pid|socket)$/i)) return true; // Direct extensions
-
-    // Claude export and archive files
-    if (fileName.match(/^\.?claude[-_]?(export|archive|dump|snapshot).*$/i)) return true;
-    if (fileName.match(/^\.?claude[-_.].*\.(export|archive|dump|snapshot)$/i)) return true;
-
-    // VS Code and IDE-specific Claude files (expanded to handle paths without leading slash)
+    // IDE-specific Claude files (path-based checks)
     if (
-      (lowerPath.includes("/.vscode/") || lowerPath.startsWith(".vscode/")) &&
+      (lowerPath.includes("/.vscode/") ||
+        lowerPath.startsWith(".vscode/") ||
+        lowerPath.includes("/.idea/") ||
+        lowerPath.startsWith(".idea/") ||
+        lowerPath.includes("/.eclipse/") ||
+        lowerPath.startsWith(".eclipse/")) &&
       lowerFileName.includes("claude")
-    ) return true;
-    if (
-      (lowerPath.includes("/.idea/") || lowerPath.startsWith(".idea/")) &&
-      lowerFileName.includes("claude")
-    ) return true;
-    if (
-      (lowerPath.includes("/.eclipse/") || lowerPath.startsWith(".eclipse/")) &&
-      lowerFileName.includes("claude")
-    ) return true;
-
-    // Claude directories (expanded patterns)
-    if (fileName.match(/^\.?claude[-_]?(workspace|project|sessions?|temp|cache|data)$/i)) {
+    ) {
       return true;
     }
-    if (lowerPath.includes("/.claude-") || lowerPath.includes("/claude_")) return true;
 
-    // Claude documentation and notes (be more specific to avoid false positives)
-    if (fileName.match(/^claude[-_]?(notes?|docs?|readme|instructions?).*\.(md|txt|rst)$/i)) {
+    // Directory patterns (path-based checks)
+    if (lowerPath.includes("/.claude-") || lowerPath.startsWith(".claude-")) {
       return true;
     }
-    if (fileName.match(/^\.claude[-_.].*\.(notes?|md|txt|rst)$/i)) return true;
+    if (lowerPath.includes("/.claude_") || lowerPath.startsWith(".claude_")) {
+      return true;
+    }
+    if (lowerPath.includes("/claude_") || lowerPath.startsWith("claude_")) {
+      return true;
+    }
+    if (lowerPath.includes("/claude-") || lowerPath.startsWith("claude-")) {
+      return true;
+    }
 
-    // Claude scripts and executables
-    if (fileName.match(/^\.?claude[-_]?(script|tool|utility|helper).*$/i)) return true;
-    if (fileName.match(/^\.?claude[-_.].*\.(sh|bat|ps1|py|js|ts)$/i)) return true;
-
-    // Hidden Claude files and dotfiles (be more specific)
-    if (fileName.match(/^\.claude[a-z0-9_-]+$/i)) return true; // Require at least one character after .claude
+    // Hidden Claude files with additional constraints
     if (
-      fileName.startsWith(".") && fileName.includes("claude") && fileName.length > 7 &&
+      fileName.startsWith(".") &&
+      fileName.includes("claude") &&
+      fileName.length > 7 &&
       !fileName.match(/^\.claude\.txt$/i)
-    ) return true;
+    ) {
+      return true;
+    }
 
-    // Claude numbered/versioned files
-    if (fileName.match(/^\.?claude[-_]?.*[0-9]+.*$/i)) return true;
-    if (fileName.match(/^\.?claude.*v[0-9]+.*$/i)) return true;
-
-    // OS-specific Claude files
-    if (fileName.match(/^\.?claude[-_.].*\.(DS_Store|Thumbs\.db|desktop\.ini)$/i)) return true;
+    // Special case: Thumbs.db in claude-related paths
     if (fileName === "Thumbs.db" && lowerPath.includes("claude")) return true;
 
     // EXCLUDE simple generic files that should NOT be caught
     if (fileName.match(/^claude\.txt$/i)) return false;
     if (fileName.match(/^include-claude.*$/i)) return false;
-    if (fileName.match(/^.*claude.*\.txt$/i) && !fileName.match(/^\.?claude[-_]/i)) return false;
-    if (fileName.match(/^claudelike\..*$/i)) return false; // Exclude claudelike.* files
+    if (
+      fileName.match(/^.*claude.*\.txt$/i) &&
+      !fileName.match(/^\.?claude[-_]/i)
+    ) {
+      return false;
+    }
+    if (fileName.match(/^claudelike\..*$/i)) return false;
 
     return false;
   }
@@ -354,66 +549,22 @@ export class FileCleaner {
 
       // IDE integration files (check BEFORE general config patterns to avoid conflicts)
       if (
-        ((lowerPath.includes("/.vscode/") || lowerPath.startsWith(".vscode/")) ||
-          (lowerPath.includes("/.idea/") || lowerPath.startsWith(".idea/")) ||
-          (lowerPath.includes("/.eclipse/") || lowerPath.startsWith(".eclipse/"))) &&
+        (lowerPath.includes("/.vscode/") ||
+          lowerPath.startsWith(".vscode/") ||
+          lowerPath.includes("/.idea/") ||
+          lowerPath.startsWith(".idea/") ||
+          lowerPath.includes("/.eclipse/") ||
+          lowerPath.startsWith(".eclipse/")) &&
         lowerFileName.includes("claude")
       ) {
         return "IDE Claude integration file";
       }
 
-      // Extended patterns - more general categories
-      if (fileName.match(/^\.?claude.*\.(json|yaml|yml|toml|ini|config)$/i)) {
-        return "Claude configuration file (extended pattern)";
-      }
-      if (fileName.match(/^claude[-_]?(config|settings|workspace|env).*$/i)) {
-        return "Claude workspace/settings file";
-      }
-      if (fileName.match(/^\.?claude[-_]?(session|state|cache|history).*$/i)) {
-        return "Claude session/state file";
-      }
-      if (
-        fileName.match(/^\.?claude[-_]?(temp|tmp|work|scratch|draft).*$/i) ||
-        fileName.match(/^\.?claude\.(temp|tmp|work|scratch|draft)$/i)
-      ) {
-        return "Claude temporary/working file";
-      }
-      if (fileName.match(/^\.?claude.*\.(bak|backup|old|orig|save)$/i)) {
-        return "Claude backup file";
-      }
-      if (fileName.match(/^\.?claude[-_]?(output|result|analysis|report).*$/i)) {
-        return "Claude output/analysis file";
-      }
-      if (
-        fileName.match(/^\.?claude.*\.(lock|pid|socket)$/i) ||
-        fileName.match(/^\.?claude[-_]?(lock|process|run).*$/i)
-      ) {
-        return "Claude process/lock file";
-      }
-      if (
-        fileName.match(/^\.?claude[-_]?(debug|trace|profile|diagnostic).*$/i) ||
-        fileName.match(/^\.?claude.*\.(debug|trace|profile|diagnostic)$/i) ||
-        fileName.match(/^\.?claude\.(diagnostic)$/i)
-      ) {
-        return "Claude debug/diagnostic file";
-      }
-      if (fileName.match(/^\.?claude[-_]?(export|archive|dump|snapshot).*$/i)) {
-        return "Claude export/archive file";
-      }
-      if (fileName.match(/^\.?claude[-_]?(workspace|project|sessions?|temp|cache|data)$/i)) {
-        return "Claude workspace directory";
-      }
-      if (fileName.match(/^claude[-_]?(notes?|docs?|readme|instructions?).*\.(md|txt|rst)$/i)) {
-        return "Claude documentation file";
-      }
-      if (fileName.match(/^\.?claude[-_]?(script|tool|utility|helper).*$/i)) {
-        return "Claude script/utility file";
-      }
-      if (fileName.match(/^\.claude[a-z0-9_-]+$/i)) {
-        return "Claude hidden/dot file";
-      }
-      if (fileName.match(/^\.?claude[-_]?.*[0-9]+.*$/i)) {
-        return "Claude numbered/versioned file";
+      // Check extended patterns using data-driven approach
+      for (const { pattern, reason } of EXTENDED_CLAUDE_PATTERNS) {
+        if (fileName.match(pattern)) {
+          return reason;
+        }
       }
 
       // Fall back to general Claude file if matched by all-patterns but not categorized above
@@ -471,8 +622,12 @@ export class FileCleaner {
 
     try {
       // Create a bare clone for the backup
-      this.logger.info(`Running: git clone --bare ${this.options.repoPath} ${backupPath}`);
-      await $`git clone --bare ${this.options.repoPath} ${backupPath}`.cwd(this.options.repoPath);
+      this.logger.info(
+        `Running: git clone --bare ${this.options.repoPath} ${backupPath}`,
+      );
+      await $`git clone --bare ${this.options.repoPath} ${backupPath}`.cwd(
+        this.options.repoPath,
+      );
       this.logger.verbose(`Backup created at: ${backupPath}`);
       return backupPath;
     } catch (error) {
@@ -490,15 +645,18 @@ export class FileCleaner {
       return;
     }
 
-    this.logger.info(`Removing ${claudeFiles.length} Claude files from Git history...`);
+    this.logger.info(
+      `Removing ${claudeFiles.length} Claude files from Git history...`,
+    );
 
     if (this.options.dryRun) {
       this.logger.info("[DRY RUN] Would remove the following files:");
       for (const file of claudeFiles) {
         let logLine = `  - ${file.path} (${file.reason})`;
         if (file.earliestCommit) {
-          logLine +=
-            `\n    First appeared in: ${file.earliestCommit.hash} (${file.earliestCommit.date})`;
+          logLine += `\n    First appeared in: ${
+            formatGitRef(file.earliestCommit.hash)
+          } (${file.earliestCommit.date})`;
           logLine += `\n    Commit: ${file.earliestCommit.message}`;
         }
         this.logger.info(logLine);
@@ -618,7 +776,7 @@ export class FileCleaner {
   async validateRepository(): Promise<void> {
     const gitDir = join(this.options.repoPath, ".git");
 
-    if (!await dirExists(gitDir) && !await fileExists(gitDir)) {
+    if (!(await dirExists(gitDir)) && !(await fileExists(gitDir))) {
       throw new AppError(
         `Not a Git repository: ${this.options.repoPath}`,
         "NOT_GIT_REPO",

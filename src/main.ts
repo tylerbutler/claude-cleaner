@@ -1,8 +1,15 @@
 import { Command } from "@cliffy/command";
-import { AppError, ConsoleLogger, getSystemInfo } from "./utils.ts";
-import { FileCleaner } from "./file-cleaner.ts";
-import { DependencyManager } from "./dependency-manager.ts";
 import { CommitCleaner } from "./commit-cleaner.ts";
+import { DependencyManager } from "./dependency-manager.ts";
+import { FileCleaner } from "./file-cleaner.ts";
+import {
+  AppError,
+  checkForMissingDependencies,
+  ConsoleLogger,
+  formatGitRef,
+  getSystemInfo,
+  loadDirectoryPatterns,
+} from "./utils.ts";
 
 const VERSION = "0.1.0";
 
@@ -18,6 +25,51 @@ interface CleanOptions {
   includeDirsFile?: string | undefined;
   defaults?: boolean | undefined;
   includeAllCommonPatterns?: boolean | undefined;
+}
+
+function createFileCleaner(
+  isDryRun: boolean,
+  options: CleanOptions,
+  repoPath: string,
+  includeDirs: string[],
+  logger: ConsoleLogger,
+): FileCleaner {
+  return new FileCleaner(
+    {
+      dryRun: isDryRun,
+      verbose: options.verbose || false,
+      repoPath,
+      createBackup: !isDryRun,
+      includeDirectories: includeDirs,
+      excludeDefaults: options.defaults === false,
+      includeAllCommonPatterns: options.includeAllCommonPatterns || false,
+    },
+    logger,
+  );
+}
+
+function displayClaudeFiles(
+  claudeFiles: {
+    path: string;
+    type: "file" | "directory";
+    reason: string;
+    earliestCommit?: { hash: string; date: string; message: string };
+  }[],
+  logger: ConsoleLogger,
+): void {
+  logger.info(`📄 Found ${claudeFiles.length} Claude files:`);
+  for (const file of claudeFiles) {
+    const typeIcon = file.type === "directory" ? "📂" : "📄";
+    logger.info(`  ${typeIcon} ${file.path} - ${file.reason}`);
+    if (file.earliestCommit) {
+      logger.info(
+        `    ↳ First appeared: ${
+          formatGitRef(file.earliestCommit.hash)
+        } (${file.earliestCommit.date})`,
+      );
+      logger.info(`      "${file.earliestCommit.message}"`);
+    }
+  }
 }
 
 async function cleanAction(options: CleanOptions) {
@@ -72,50 +124,22 @@ async function cleanAction(options: CleanOptions) {
 
       // Check dependencies are available for file cleaning
       const depResults = await depManager.checkAllDependencies();
-      const missingDeps = depResults.filter((result) => !result.available);
-
-      if (missingDeps.length > 0 && !isDryRun) {
-        logger.error("Missing required dependencies for file removal:");
-        for (const dep of missingDeps) {
-          logger.error(`  - ${dep.tool}: ${dep.error || "not found"}`);
-        }
-        logger.info("Run with --auto-install to install dependencies automatically");
-        throw new AppError("Missing dependencies", "MISSING_DEPENDENCIES");
-      }
+      checkForMissingDependencies(depResults, isDryRun, logger);
 
       // Collect directory patterns from CLI and file
-      const includeDirs: string[] = [...(options.includeDirs || [])];
+      const includeDirs = await loadDirectoryPatterns(
+        options.includeDirs,
+        options.includeDirsFile,
+        logger,
+      );
 
-      if (options.includeDirsFile) {
-        try {
-          const fileContent = await Deno.readTextFile(options.includeDirsFile);
-          const fileDirs = fileContent
-            .split("\n")
-            .map((line) => line.trim())
-            .filter((line) => line && !line.startsWith("#")); // Skip empty lines and comments
-          includeDirs.push(...fileDirs);
-          logger.verbose(
-            `Loaded ${fileDirs.length} directory patterns from ${options.includeDirsFile}`,
-          );
-        } catch (error) {
-          throw new AppError(
-            `Failed to read directory patterns file: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-            "FILE_READ_ERROR",
-          );
-        }
-      }
-
-      const fileCleaner = new FileCleaner({
-        dryRun: isDryRun,
-        verbose: options.verbose || false,
+      const fileCleaner = createFileCleaner(
+        isDryRun,
+        options,
         repoPath,
-        createBackup: !isDryRun, // Create backup for real operations
-        includeDirectories: includeDirs,
-        excludeDefaults: options.defaults === false,
-        includeAllCommonPatterns: options.includeAllCommonPatterns || false,
-      }, logger);
+        includeDirs,
+        logger,
+      );
 
       // Set BFG path from dependency manager if available
       if (!isDryRun) {
@@ -131,20 +155,12 @@ async function cleanAction(options: CleanOptions) {
           return;
         }
 
-        logger.info(`📄 Found ${claudeFiles.length} Claude files:`);
-        for (const file of claudeFiles) {
-          const typeIcon = file.type === "directory" ? "📂" : "📄";
-          logger.info(`  ${typeIcon} ${file.path} - ${file.reason}`);
-          if (file.earliestCommit) {
-            logger.info(
-              `    ↳ First appeared: ${file.earliestCommit.hash} (${file.earliestCommit.date})`,
-            );
-            logger.info(`      "${file.earliestCommit.message}"`);
-          }
-        }
+        displayClaudeFiles(claudeFiles, logger);
 
         if (isDryRun) {
-          logger.info("\nDry-run complete. Use --execute to remove these files.");
+          logger.info(
+            "\nDry-run complete. Use --execute to remove these files.",
+          );
         } else {
           // Actually remove the files
           await fileCleaner.cleanFiles();
@@ -161,60 +177,39 @@ async function cleanAction(options: CleanOptions) {
       }
     } else if (options.commitsOnly) {
       logger.info("Commits-only mode: Cleaning commit messages...");
-      await handleCommitCleaning({ ...options, execute: options.execute }, logger, depManager);
+      await handleCommitCleaning(
+        { ...options, execute: options.execute },
+        logger,
+        depManager,
+        repoPath,
+      );
     } else {
       // Full cleaning mode - both files and commits
-      logger.info("Full cleaning mode: removing Claude files and cleaning commit messages...");
+      logger.info(
+        "Full cleaning mode: removing Claude files and cleaning commit messages...",
+      );
 
       // Check dependencies are available
       const depResults = await depManager.checkAllDependencies();
-      const missingDeps = depResults.filter((result) => !result.available);
-
-      if (missingDeps.length > 0 && !isDryRun) {
-        logger.error("Missing required dependencies:");
-        for (const dep of missingDeps) {
-          logger.error(`  - ${dep.tool}: ${dep.error || "not found"}`);
-        }
-        logger.info("Run with --auto-install to install dependencies automatically");
-        throw new AppError("Missing dependencies", "MISSING_DEPENDENCIES");
-      }
+      checkForMissingDependencies(depResults, isDryRun, logger);
 
       // Step 1: File cleaning
       logger.info("\n📁 Step 1: Scanning for Claude files...");
 
       // Collect directory patterns from CLI and file
-      const includeDirs: string[] = [...(options.includeDirs || [])];
+      const includeDirs = await loadDirectoryPatterns(
+        options.includeDirs,
+        options.includeDirsFile,
+        logger,
+      );
 
-      if (options.includeDirsFile) {
-        try {
-          const fileContent = await Deno.readTextFile(options.includeDirsFile);
-          const fileDirs = fileContent
-            .split("\n")
-            .map((line) => line.trim())
-            .filter((line) => line && !line.startsWith("#")); // Skip empty lines and comments
-          includeDirs.push(...fileDirs);
-          logger.verbose(
-            `Loaded ${fileDirs.length} directory patterns from ${options.includeDirsFile}`,
-          );
-        } catch (error) {
-          throw new AppError(
-            `Failed to read directory patterns file: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-            "FILE_READ_ERROR",
-          );
-        }
-      }
-
-      const fileCleaner = new FileCleaner({
-        dryRun: isDryRun,
-        verbose: options.verbose || false,
+      const fileCleaner = createFileCleaner(
+        isDryRun,
+        options,
         repoPath,
-        createBackup: !isDryRun, // Create backup for real operations
-        includeDirectories: includeDirs,
-        excludeDefaults: options.defaults === false,
-        includeAllCommonPatterns: options.includeAllCommonPatterns || false,
-      }, logger);
+        includeDirs,
+        logger,
+      );
 
       // Set BFG path from dependency manager if available
       if (!isDryRun) {
@@ -228,20 +223,12 @@ async function cleanAction(options: CleanOptions) {
         if (claudeFiles.length === 0) {
           logger.info("No Claude files found in repository");
         } else {
-          logger.info(`📄 Found ${claudeFiles.length} Claude files:`);
-          for (const file of claudeFiles) {
-            const typeIcon = file.type === "directory" ? "📂" : "📄";
-            logger.info(`  ${typeIcon} ${file.path} - ${file.reason}`);
-            if (file.earliestCommit) {
-              logger.info(
-                `    ↳ First appeared: ${file.earliestCommit.hash} (${file.earliestCommit.date})`,
-              );
-              logger.info(`      "${file.earliestCommit.message}"`);
-            }
-          }
+          displayClaudeFiles(claudeFiles, logger);
 
           if (isDryRun) {
-            logger.info("\nFile scan complete. Use --execute to remove these files.");
+            logger.info(
+              "\nFile scan complete. Use --execute to remove these files.",
+            );
           } else {
             // Actually remove the files
             await fileCleaner.cleanFiles();
@@ -261,7 +248,12 @@ async function cleanAction(options: CleanOptions) {
 
       // Step 2: Commit message cleaning
       logger.info("\n💬 Step 2: Cleaning commit messages...");
-      await handleCommitCleaning({ ...options, execute: options.execute }, logger, depManager);
+      await handleCommitCleaning(
+        { ...options, execute: options.execute },
+        logger,
+        depManager,
+        repoPath,
+      );
 
       // Summary
       if (isDryRun) {
@@ -279,7 +271,9 @@ async function cleanAction(options: CleanOptions) {
         logger.verbose(`Caused by: ${error.cause.message}`);
       }
     } else {
-      logger.error(`Unexpected error: ${error instanceof Error ? error.message : String(error)}`);
+      logger.error(
+        `Unexpected error: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     throw error;
   }
@@ -322,7 +316,9 @@ async function checkDepsAction(options: { verbose?: boolean | undefined }) {
         logger.verbose(`Caused by: ${error.cause.message}`);
       }
     } else {
-      logger.error(`Unexpected error: ${error instanceof Error ? error.message : String(error)}`);
+      logger.error(
+        `Unexpected error: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     throw error;
   }
@@ -332,9 +328,10 @@ async function handleCommitCleaning(
   options: CleanOptions,
   logger: ConsoleLogger,
   depManager: DependencyManager,
+  repoPath: string,
 ) {
   const sdPath = await getSdPath(depManager);
-  const commitCleaner = new CommitCleaner(logger, sdPath);
+  const commitCleaner = new CommitCleaner(logger, sdPath, repoPath);
   const isDryRun = !options.execute;
 
   // Validate Git repository
@@ -360,12 +357,15 @@ async function handleCommitCleaning(
   if (isDryRun && result.preview) {
     logger.info(`\n📊 Commit Analysis Results:`);
     logger.info(`Total commits analyzed: ${result.totalCommits}`);
-    logger.info(`Commits with Claude trailers: ${result.commitsWithClaudeTrailers}`);
+    logger.info(
+      `Commits with Claude trailers: ${result.commitsWithClaudeTrailers}`,
+    );
     logger.info(`Total trailers to remove: ${result.trailersRemoved}`);
 
     if (result.preview.length > 0) {
       logger.info(`\nPreview of changes:`);
-      for (const commit of result.preview.slice(0, 5)) { // Show first 5 for brevity
+      for (const commit of result.preview.slice(0, 5)) {
+        // Show first 5 for brevity
         logger.info(`\n  Commit: ${commit.shortSha}`);
         logger.info(`  Trailers found: ${commit.trailersFound.length}`);
         for (const trailer of commit.trailersFound) {
@@ -373,12 +373,16 @@ async function handleCommitCleaning(
         }
         logger.info(
           `  Original message preview: "${
-            commit.originalMessage.split("\n")[0]?.substring(0, 60)
+            commit.originalMessage
+              .split("\n")[0]
+              ?.substring(0, 60)
           }..."`,
         );
         logger.info(
           `  Cleaned message preview: "${
-            commit.cleanedMessage.split("\n")[0]?.substring(0, 60)
+            commit.cleanedMessage
+              .split("\n")[0]
+              ?.substring(0, 60)
           }..."`,
         );
       }
@@ -387,7 +391,9 @@ async function handleCommitCleaning(
         logger.info(`\n  ... and ${result.preview.length - 5} more commits`);
       }
 
-      logger.info(`\nTo apply these changes, run: claude-cleaner --commits-only --execute`);
+      logger.info(
+        `\nTo apply these changes, run: claude-cleaner --commits-only --execute`,
+      );
     }
   } else if (!isDryRun) {
     logger.info(`\n✓ Commit cleaning completed successfully!`);
@@ -400,7 +406,10 @@ async function handleCommitCleaning(
 async function getSdPath(depManager: DependencyManager): Promise<string> {
   const sdCheck = await depManager.checkDependency("sd");
   if (!sdCheck.available) {
-    throw new AppError("sd tool is required but not available", "SD_NOT_AVAILABLE");
+    throw new AppError(
+      "sd tool is required but not available",
+      "SD_NOT_AVAILABLE",
+    );
   }
   return sdCheck.path || "sd";
 }
@@ -422,9 +431,18 @@ async function main() {
       )
       .option("-v, --verbose", "Enable verbose output")
       .option("--auto-install", "Automatically install required dependencies")
-      .option("--files-only", "Only scan and remove Claude files (skip commit message cleaning)")
-      .option("--commits-only", "Clean only commit messages (skip file removal)")
-      .option("--repo-path <path:string>", "Path to Git repository (defaults to current directory)")
+      .option(
+        "--files-only",
+        "Only scan and remove Claude files (skip commit message cleaning)",
+      )
+      .option(
+        "--commits-only",
+        "Clean only commit messages (skip file removal)",
+      )
+      .option(
+        "--repo-path <path:string>",
+        "Path to Git repository (defaults to current directory)",
+      )
       .option("--branch <branch>", "Specify branch to clean (defaults to HEAD)")
       .option(
         "--include-dirs <name:string>",
@@ -435,7 +453,10 @@ async function main() {
         "--include-dirs-file <file:string>",
         "Read directory names from file (one pattern per line)",
       )
-      .option("--no-defaults", "Skip default Claude patterns (.claude/, CLAUDE.md, etc.)")
+      .option(
+        "--no-defaults",
+        "Skip default Claude patterns (.claude/, CLAUDE.md, etc.)",
+      )
       .option(
         "--include-all-common-patterns",
         "Include ALL known common Claude patterns (even rarely used ones) - use for complete cleanup",
@@ -451,7 +472,9 @@ async function main() {
       logger.error(`${error.code}: ${error.message}`);
       Deno.exit(1);
     } else {
-      logger.error(`Fatal error: ${error instanceof Error ? error.message : String(error)}`);
+      logger.error(
+        `Fatal error: ${error instanceof Error ? error.message : String(error)}`,
+      );
       Deno.exit(1);
     }
   }

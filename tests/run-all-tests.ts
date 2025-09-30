@@ -59,7 +59,10 @@ const TEST_SUITES: TestSuite[] = [
   },
 ];
 
-async function runTestSuite(suite: TestSuite, __verbose: boolean = false): Promise<{
+async function runTestSuite(
+  suite: TestSuite,
+  __verbose: boolean = false,
+): Promise<{
   success: boolean;
   output: string;
   duration: number;
@@ -89,9 +92,10 @@ async function runTestSuite(suite: TestSuite, __verbose: boolean = false): Promi
     };
   } catch (error) {
     const duration = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       success: false,
-      output: `Error running test: ${error.message}`,
+      output: `Error running test: ${errorMessage}`,
       duration,
     };
   }
@@ -134,7 +138,9 @@ ${TEST_SUITES.map((s) => `  ${s.name.padEnd(20)} ${s.description}`).join("\n")}
     suitesToRun = TEST_SUITES.filter((s) => s.name === args.suite);
     if (suitesToRun.length === 0) {
       console.error(`❌ Test suite "${args.suite}" not found`);
-      console.error(`Available suites: ${TEST_SUITES.map((s) => s.name).join(", ")}`);
+      console.error(
+        `Available suites: ${TEST_SUITES.map((s) => s.name).join(", ")}`,
+      );
       Deno.exit(1);
     }
   }

@@ -1,5 +1,5 @@
-import { $ } from "dax";
 import { join } from "https://deno.land/std@0.208.0/path/mod.ts";
+import { $ } from "dax";
 import type { Logger } from "./utils.ts";
 import { AppError, ensureDir, fileExists, getSystemInfo } from "./utils.ts";
 
@@ -28,19 +28,21 @@ export class DependencyManager {
     cacheDir?: string,
   ) {
     const systemInfo = getSystemInfo();
-    this.cacheDir = cacheDir || join(
-      systemInfo.homeDir || "/tmp",
-      ".cache",
-      "claude-cleaner",
-    );
+    this.cacheDir = cacheDir ||
+      join(systemInfo.homeDir || "/tmp", ".cache", "claude-cleaner");
     this.bfgJarPath = join(this.cacheDir, "bfg-1.14.0.jar");
   }
 
   async ensureMiseInstalled(): Promise<void> {
     try {
-      const result = await $`mise --version`.stdout("piped").stderr("piped").noThrow();
+      const result = await $`mise --version`
+        .stdout("piped")
+        .stderr("piped")
+        .noThrow();
       if (result.code === 0) {
-        this.logger.verbose(`mise is already installed: ${result.stdout.trim()}`);
+        this.logger.verbose(
+          `mise is already installed: ${result.stdout.trim()}`,
+        );
         return;
       }
     } catch {
@@ -79,7 +81,10 @@ export class DependencyManager {
 
     try {
       // Install Java 17 (LTS version that works well with BFG)
-      const installResult = await $`mise install java@17`.stdout("piped").stderr("piped").noThrow();
+      const installResult = await $`mise install java@17`
+        .stdout("piped")
+        .stderr("piped")
+        .noThrow();
       if (installResult.code !== 0) {
         throw new AppError(
           "Failed to install Java via mise",
@@ -89,7 +94,10 @@ export class DependencyManager {
       }
 
       // Use Java globally
-      const useResult = await $`mise use -g java@17`.stdout("piped").stderr("piped").noThrow();
+      const useResult = await $`mise use -g java@17`
+        .stdout("piped")
+        .stderr("piped")
+        .noThrow();
       if (useResult.code !== 0) {
         throw new AppError(
           "Failed to configure Java globally",
@@ -115,7 +123,9 @@ export class DependencyManager {
     this.logger.info("Installing sd via mise...");
 
     try {
-      const installResult = await $`mise install sd@latest`.stdout("piped").stderr("piped")
+      const installResult = await $`mise install sd@latest`
+        .stdout("piped")
+        .stderr("piped")
         .noThrow();
       if (installResult.code !== 0) {
         throw new AppError(
@@ -125,7 +135,10 @@ export class DependencyManager {
         );
       }
 
-      const useResult = await $`mise use -g sd@latest`.stdout("piped").stderr("piped").noThrow();
+      const useResult = await $`mise use -g sd@latest`
+        .stdout("piped")
+        .stderr("piped")
+        .noThrow();
       if (useResult.code !== 0) {
         throw new AppError(
           "Failed to configure sd globally",
@@ -159,9 +172,10 @@ export class DependencyManager {
       await ensureDir(this.cacheDir);
 
       const downloadUrl = "https://repo1.maven.org/maven2/com/madgag/bfg/1.14.0/bfg-1.14.0.jar";
-      const downloadResult = await $`curl -fsSL -o ${this.bfgJarPath} ${downloadUrl}`.stdout(
-        "piped",
-      ).stderr("piped").noThrow();
+      const downloadResult = await $`curl -fsSL -o ${this.bfgJarPath} ${downloadUrl}`
+        .stdout("piped")
+        .stderr("piped")
+        .noThrow();
 
       if (downloadResult.code !== 0) {
         throw new AppError(
@@ -196,7 +210,10 @@ export class DependencyManager {
     try {
       switch (tool) {
         case "java": {
-          const result = await $`java -version`.stdout("piped").stderr("piped").noThrow();
+          const result = await $`java -version`
+            .stdout("piped")
+            .stderr("piped")
+            .noThrow();
           if (result.code === 0) {
             // Java version output goes to stderr
             const versionMatch = result.stderr.match(/version "([^"]+)"/);
@@ -204,20 +221,23 @@ export class DependencyManager {
               tool,
               available: true,
               version: versionMatch?.[1] || "unknown",
-              path: await this.findExecutablePath("java") || undefined,
+              path: (await this.findExecutablePath("java")) || undefined,
             };
           }
           return { tool, available: false, error: result.stderr };
         }
 
         case "sd": {
-          const result = await $`sd --version`.stdout("piped").stderr("piped").noThrow();
+          const result = await $`sd --version`
+            .stdout("piped")
+            .stderr("piped")
+            .noThrow();
           if (result.code === 0) {
             return {
               tool,
               available: true,
               version: result.stdout.trim(),
-              path: await this.findExecutablePath("sd") || undefined,
+              path: (await this.findExecutablePath("sd")) || undefined,
             };
           }
           return { tool, available: false, error: result.stderr };
@@ -237,13 +257,16 @@ export class DependencyManager {
         }
 
         case "mise": {
-          const result = await $`mise --version`.stdout("piped").stderr("piped").noThrow();
+          const result = await $`mise --version`
+            .stdout("piped")
+            .stderr("piped")
+            .noThrow();
           if (result.code === 0) {
             return {
               tool,
               available: true,
               version: result.stdout.trim(),
-              path: await this.findExecutablePath("mise") || undefined,
+              path: (await this.findExecutablePath("mise")) || undefined,
             };
           }
           return { tool, available: false, error: result.stderr };
@@ -293,9 +316,14 @@ export class DependencyManager {
     return this.bfgJarPath;
   }
 
-  private async findExecutablePath(command: string): Promise<string | undefined> {
+  private async findExecutablePath(
+    command: string,
+  ): Promise<string | undefined> {
     try {
-      const result = await $`which ${command}`.stdout("piped").stderr("piped").noThrow();
+      const result = await $`which ${command}`
+        .stdout("piped")
+        .stderr("piped")
+        .noThrow();
       if (result.code === 0) {
         return result.stdout.trim();
       }

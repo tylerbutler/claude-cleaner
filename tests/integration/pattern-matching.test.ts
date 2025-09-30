@@ -2,9 +2,9 @@
  * Integration tests for FileCleaner pattern matching functionality
  */
 
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assert } from "@std/assert";
 import { ensureDir } from "@std/fs";
+import { join } from "@std/path";
 import { FileCleaner, type FileCleanerOptions } from "../../src/file-cleaner.ts";
 import { ConsoleLogger } from "../../src/utils.ts";
 
@@ -39,6 +39,16 @@ async function createDirectoryStructure(
   repoPath: string,
   structure: Record<string, string | Record<string, string>>,
 ) {
+  const git = async (args: string[]) => {
+    const process = new Deno.Command("git", {
+      args,
+      cwd: repoPath,
+      stdout: "null",
+      stderr: "null",
+    });
+    await process.output();
+  };
+
   for (const [path, content] of Object.entries(structure)) {
     const fullPath = join(repoPath, path);
 
@@ -54,10 +64,16 @@ async function createDirectoryStructure(
       }
     }
   }
+
+  // Commit all files to git history so they can be detected
+  await git(["add", "-A", "--force"]);
+  await git(["commit", "-m", "Add test files"]);
 }
 
 Deno.test("FileCleaner Pattern Matching Integration", async (t) => {
-  const tempDir = await Deno.makeTempDir({ prefix: "claude-cleaner-integration" });
+  const tempDir = await Deno.makeTempDir({
+    prefix: "claude-cleaner-integration",
+  });
   const logger = new ConsoleLogger(false);
 
   await t.step("should match user-specified directories", async () => {
@@ -139,8 +155,9 @@ Deno.test("FileCleaner Pattern Matching Integration", async (t) => {
 
     const paths = claudeFiles.map((f) => f.path).sort();
 
-    // Should only find .serena (user pattern)
-    assertEquals(paths, [".serena"]);
+    // Should find .serena directory and its contents (user pattern)
+    assert(paths.includes(".serena"));
+    assert(paths.includes(".serena/config.json"));
 
     // Should NOT find default Claude patterns
     assert(!paths.includes("CLAUDE.md"));

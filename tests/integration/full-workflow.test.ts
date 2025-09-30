@@ -61,7 +61,6 @@ Deno.test("Integration - Full Cleaning Workflow", async (t) => {
     try {
       // TODO: Run files-only cleaning
       // $ deno run --allow-all src/main.ts --files-only --auto-install ${repo.path}
-
       // TODO: Verify only files are cleaned, commits unchanged
     } finally {
       await repo.cleanup();
@@ -74,7 +73,6 @@ Deno.test("Integration - Full Cleaning Workflow", async (t) => {
     try {
       // TODO: Run commits-only cleaning
       // $ deno run --allow-all src/main.ts --commits-only --auto-install ${repo.path}
-
       // TODO: Verify only commits are cleaned, files unchanged
     } finally {
       await repo.cleanup();
@@ -125,17 +123,20 @@ Deno.test("Integration - Edge Cases", async (t) => {
     }
   });
 
-  await t.step("should handle already clean repository gracefully", async () => {
-    const repo = await createCleanRepo();
+  await t.step(
+    "should handle already clean repository gracefully",
+    async () => {
+      const repo = await createCleanRepo();
 
-    try {
-      // TODO: Test cleaning repository with no Claude artifacts
-      // Should complete successfully without errors
-      await assertValidGitRepo(repo.path);
-    } finally {
-      await repo.cleanup();
-    }
-  });
+      try {
+        // TODO: Test cleaning repository with no Claude artifacts
+        // Should complete successfully without errors
+        await assertValidGitRepo(repo.path);
+      } finally {
+        await repo.cleanup();
+      }
+    },
+  );
 
   await t.step("should handle large repositories efficiently", async () => {
     // TODO: Create large repository fixture and test performance
@@ -175,7 +176,6 @@ Deno.test("Integration - Backup and Recovery", async (t) => {
     try {
       // TODO: Test backup creation
       // $ deno run --allow-all src/main.ts --auto-install ${repo.path}
-
       // TODO: Verify backup exists and contains original state
     } finally {
       await repo.cleanup();

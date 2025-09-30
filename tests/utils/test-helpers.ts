@@ -3,8 +3,8 @@
  */
 
 import { assert, assertExists } from "@std/assert";
-import { join } from "@std/path";
 import { ensureDir, exists } from "@std/fs";
+import { join } from "@std/path";
 import { $ } from "dax";
 
 export interface TestRepo {
@@ -22,7 +22,9 @@ export interface ClaudeArtifact {
  * Creates a temporary Git repository for testing
  */
 export async function createTestRepo(name: string): Promise<TestRepo> {
-  const tempDir = await Deno.makeTempDir({ prefix: `claude-cleaner-test-${name}-` });
+  const tempDir = await Deno.makeTempDir({
+    prefix: `claude-cleaner-test-${name}-`,
+  });
 
   // Initialize Git repository
   await $`git init`.cwd(tempDir);
@@ -114,10 +116,13 @@ export async function getRepoFiles(repoPath: string): Promise<string[]> {
   const trackedFiles = result.stdout.trim().split("\n").filter(Boolean);
 
   // Also get untracked files
-  const untrackedResult = await $`git ls-files --others --exclude-standard`.cwd(repoPath).stdout(
-    "piped",
-  );
-  const untrackedFiles = untrackedResult.stdout.trim().split("\n").filter(Boolean);
+  const untrackedResult = await $`git ls-files --others --exclude-standard`
+    .cwd(repoPath)
+    .stdout("piped");
+  const untrackedFiles = untrackedResult.stdout
+    .trim()
+    .split("\n")
+    .filter(Boolean);
 
   return [...trackedFiles, ...untrackedFiles];
 }
@@ -126,10 +131,11 @@ export async function getRepoFiles(repoPath: string): Promise<string[]> {
  * Gets all commit messages in the repository
  */
 export async function getCommitMessages(repoPath: string): Promise<string[]> {
-  const result = await $`git log --pretty=format:%B%n---COMMIT-END---`.cwd(repoPath).stdout(
-    "piped",
-  );
-  return result.stdout.split("---COMMIT-END---")
+  const result = await $`git log --pretty=format:%B%n---COMMIT-END---`
+    .cwd(repoPath)
+    .stdout("piped");
+  return result.stdout
+    .split("---COMMIT-END---")
     .map((msg) => msg.trim())
     .filter(Boolean);
 }
@@ -150,7 +156,10 @@ export function hasClaudeArtifacts(content: string): boolean {
 /**
  * Assertion helper for verifying Claude artifacts are removed
  */
-export function assertNoClaudeArtifacts(content: string, context?: string): void {
+export function assertNoClaudeArtifacts(
+  content: string,
+  context?: string,
+): void {
   if (hasClaudeArtifacts(content)) {
     throw new Error(
       `Found Claude artifacts in ${context || "content"}: ${content.substring(0, 200)}...`,

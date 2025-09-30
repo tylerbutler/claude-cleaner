@@ -83,7 +83,11 @@ Deno.test("Pattern Validation", async (t) => {
   });
 
   await t.step("should accept valid directory names", async () => {
-    const fileCleaner = createFileCleaner(["claudedocs", ".serena", "valid-name"]);
+    const fileCleaner = createFileCleaner([
+      "claudedocs",
+      ".serena",
+      "valid-name",
+    ]);
 
     // Should not throw during validation
     // We can't actually run detectClaudeFiles without a real repo, but we can check it doesn't fail validation
@@ -91,7 +95,9 @@ Deno.test("Pattern Validation", async (t) => {
       await fileCleaner.detectClaudeFiles();
     } catch (error) {
       // If it fails, it should be due to missing repo, not pattern validation
-      assert(!(error instanceof Error && error.message.includes("Invalid pattern")));
+      assert(
+        !(error instanceof Error && error.message.includes("Invalid pattern")),
+      );
     }
   });
 
@@ -101,19 +107,28 @@ Deno.test("Pattern Validation", async (t) => {
     try {
       await fileCleaner.detectClaudeFiles();
     } catch (error) {
-      assert(!(error instanceof Error && error.message.includes("Invalid pattern")));
+      assert(
+        !(error instanceof Error && error.message.includes("Invalid pattern")),
+      );
     }
   });
 
-  await t.step("should accept patterns with hyphens and underscores", async () => {
-    const fileCleaner = createFileCleaner(["my-dir", "my_dir", "test-123"]);
+  await t.step(
+    "should accept patterns with hyphens and underscores",
+    async () => {
+      const fileCleaner = createFileCleaner(["my-dir", "my_dir", "test-123"]);
 
-    try {
-      await fileCleaner.detectClaudeFiles();
-    } catch (error) {
-      assert(!(error instanceof Error && error.message.includes("Invalid pattern")));
-    }
-  });
+      try {
+        await fileCleaner.detectClaudeFiles();
+      } catch (error) {
+        assert(
+          !(
+            error instanceof Error && error.message.includes("Invalid pattern")
+          ),
+        );
+      }
+    },
+  );
 });
 
 Deno.test("Pattern Warning System", async (t) => {
@@ -147,10 +162,18 @@ Deno.test("Pattern Warning System", async (t) => {
     }
 
     // Should have warnings for broad patterns
-    assert(warnings.some((w) => w.includes("Pattern 'temp' may match many directories")));
-    assert(warnings.some((w) => w.includes("Pattern 'cache' may match many directories")));
-    assert(warnings.some((w) => w.includes("Pattern 'a' may match many directories")));
-    assert(warnings.some((w) => w.includes("Pattern 'build' may match many directories")));
+    assert(
+      warnings.some((w) => w.includes("Pattern 'temp' may match many directories")),
+    );
+    assert(
+      warnings.some((w) => w.includes("Pattern 'cache' may match many directories")),
+    );
+    assert(
+      warnings.some((w) => w.includes("Pattern 'a' may match many directories")),
+    );
+    assert(
+      warnings.some((w) => w.includes("Pattern 'build' may match many directories")),
+    );
   });
 
   await t.step("should not warn about specific patterns", async () => {

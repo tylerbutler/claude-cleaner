@@ -2,14 +2,14 @@
  * Git repository fixtures for testing Claude Cleaner
  */
 
-import { join } from "@std/path";
 import { ensureDir } from "@std/fs";
+import { join } from "@std/path";
+import type { ClaudeArtifact, TestRepo } from "./test-helpers.ts";
 import {
   addClaudeArtifacts,
   createCommitsWithClaudeTrailers,
   createTestRepo,
 } from "./test-helpers.ts";
-import type { ClaudeArtifact, TestRepo } from "./test-helpers.ts";
 
 /**
  * Common Claude artifacts found in repositories
@@ -90,7 +90,10 @@ export async function createRepoWithClaudeFiles(): Promise<TestRepo> {
   // Add basic project structure
   await Deno.writeTextFile(join(repo.path, "README.md"), "# Test Repository\n");
   await ensureDir(join(repo.path, "src"));
-  await Deno.writeTextFile(join(repo.path, "src/main.ts"), "console.log('Hello');\n");
+  await Deno.writeTextFile(
+    join(repo.path, "src/main.ts"),
+    "console.log('Hello');\n",
+  );
 
   // Add Claude artifacts
   await addClaudeArtifacts(repo.path, COMMON_CLAUDE_ARTIFACTS);
@@ -142,7 +145,10 @@ export async function createFullTestRepo(): Promise<TestRepo> {
   await ensureDir(join(repo.path, ".vscode"));
 
   // Add regular project files
-  await Deno.writeTextFile(join(repo.path, "README.md"), "# Full Test Repository\n");
+  await Deno.writeTextFile(
+    join(repo.path, "README.md"),
+    "# Full Test Repository\n",
+  );
   await Deno.writeTextFile(
     join(repo.path, "package.json"),
     `{
@@ -212,7 +218,16 @@ export async function createEdgeCaseRepo(): Promise<TestRepo> {
   );
 
   // Binary files that might confuse text processing
-  const binaryData = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+  const binaryData = new Uint8Array([
+    0x89,
+    0x50,
+    0x4e,
+    0x47,
+    0x0d,
+    0x0a,
+    0x1a,
+    0x0a,
+  ]);
   await Deno.writeFile(join(repo.path, "image.png"), binaryData);
 
   // Commit with very long message
@@ -234,9 +249,15 @@ export async function createPartiallyCleanedRepo(): Promise<TestRepo> {
   const repo = await createTestRepo("partially-cleaned");
 
   // Add some files without Claude artifacts
-  await Deno.writeTextFile(join(repo.path, "README.md"), "# Clean Repository\n");
+  await Deno.writeTextFile(
+    join(repo.path, "README.md"),
+    "# Clean Repository\n",
+  );
   await ensureDir(join(repo.path, "src"));
-  await Deno.writeTextFile(join(repo.path, "src/main.ts"), "console.log('Clean code');\n");
+  await Deno.writeTextFile(
+    join(repo.path, "src/main.ts"),
+    "console.log('Clean code');\n",
+  );
 
   // Add some Claude artifacts
   const claudeMd = COMMON_CLAUDE_ARTIFACTS[0];
@@ -273,7 +294,10 @@ export async function createCleanRepo(): Promise<TestRepo> {
   const repo = await createTestRepo("clean");
 
   // Add regular project files
-  await Deno.writeTextFile(join(repo.path, "README.md"), "# Clean Repository\n");
+  await Deno.writeTextFile(
+    join(repo.path, "README.md"),
+    "# Clean Repository\n",
+  );
   await Deno.writeTextFile(
     join(repo.path, "package.json"),
     `{

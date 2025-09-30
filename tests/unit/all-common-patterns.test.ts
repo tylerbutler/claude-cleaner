@@ -3,8 +3,8 @@
  */
 
 import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
 import { ensureDir } from "@std/fs";
+import { join } from "@std/path";
 import { FileCleaner, type FileCleanerOptions } from "../../src/file-cleaner.ts";
 import { ConsoleLogger } from "../../src/utils.ts";
 
@@ -35,16 +35,36 @@ async function createTestRepo(tempDir: string): Promise<string> {
   return repoPath;
 }
 
-async function createTestFiles(repoPath: string, files: Record<string, string>) {
+async function createTestFiles(
+  repoPath: string,
+  files: Record<string, string>,
+) {
+  const git = async (args: string[]) => {
+    const process = new Deno.Command("git", {
+      args,
+      cwd: repoPath,
+      stdout: "null",
+      stderr: "null",
+    });
+    await process.output();
+  };
+
   for (const [filePath, content] of Object.entries(files)) {
     const fullPath = join(repoPath, filePath);
     await ensureDir(join(fullPath, ".."));
     await Deno.writeTextFile(fullPath, content);
   }
+
+  // Commit all files to git history so they can be detected
+  // Use --force to add files that might be in global gitignore (like *.log)
+  await git(["add", "-A", "--force"]);
+  await git(["commit", "-m", "Add test files"]);
 }
 
 Deno.test("All Common Patterns Flag", async (t) => {
-  const tempDir = await Deno.makeTempDir({ prefix: "claude-cleaner-all-patterns" });
+  const tempDir = await Deno.makeTempDir({
+    prefix: "claude-cleaner-all-patterns",
+  });
   const logger = new ConsoleLogger(false);
 
   await t.step("should reject conflicting flags", async () => {
@@ -481,16 +501,30 @@ Deno.test("All Common Patterns Flag", async (t) => {
     const claudeFiles = await fileCleaner.detectClaudeFiles();
 
     // Check that appropriate reasons are provided
-    const reasonMap = Object.fromEntries(claudeFiles.map((f) => [f.path, f.reason]));
+    const reasonMap = Object.fromEntries(
+      claudeFiles.map((f) => [f.path, f.reason]),
+    );
 
     assertEquals(reasonMap["CLAUDE.md"], "Claude project configuration file");
-    assertEquals(reasonMap["claude.config.json"], "Claude configuration file (extended pattern)");
+    assertEquals(
+      reasonMap["claude.config.json"],
+      "Claude configuration file (extended pattern)",
+    );
     assertEquals(reasonMap[".claude_session.dat"], "Claude session/state file");
-    assertEquals(reasonMap["claude-temp.work"], "Claude temporary/working file");
+    assertEquals(
+      reasonMap["claude-temp.work"],
+      "Claude temporary/working file",
+    );
     assertEquals(reasonMap[".claude.backup"], "Claude backup file");
     assertEquals(reasonMap["claude.lock"], "Claude process/lock file");
-    assertEquals(reasonMap["claude-debug.trace"], "Claude debug/diagnostic file");
-    assertEquals(reasonMap[".vscode/claude-ext.json"], "IDE Claude integration file");
+    assertEquals(
+      reasonMap["claude-debug.trace"],
+      "Claude debug/diagnostic file",
+    );
+    assertEquals(
+      reasonMap[".vscode/claude-ext.json"],
+      "IDE Claude integration file",
+    );
 
     await Deno.remove(repoPath, { recursive: true });
   });

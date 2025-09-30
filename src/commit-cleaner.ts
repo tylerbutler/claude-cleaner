@@ -57,9 +57,12 @@ export class CommitCleaner {
   constructor(
     private readonly logger: Logger,
     private readonly sdPath: string = "sd",
+    private readonly repoPath: string = Deno.cwd(),
   ) {}
 
-  async cleanCommits(options: CommitCleanOptions = {}): Promise<CommitCleanResult> {
+  async cleanCommits(
+    options: CommitCleanOptions = {},
+  ): Promise<CommitCleanResult> {
     const branch = options.branchToClean || "HEAD";
 
     this.logger.info(`Starting commit cleaning for branch: ${branch}`);
@@ -71,19 +74,26 @@ export class CommitCleaner {
       this.logger.info("Dry-run mode: showing preview of changes");
 
       // Show commands that would be executed
-      if (analysis.commitsWithClaudeTrailers > 0 && analysis.earliestCommitWithTrailer) {
+      if (
+        analysis.commitsWithClaudeTrailers > 0 &&
+        analysis.earliestCommitWithTrailer
+      ) {
         this.logger.info("\n[DRY RUN] Commands that would be executed:");
 
         // Get current branch
         try {
-          const currentBranchResult = await $`git rev-parse --abbrev-ref HEAD`.stdout("piped")
+          const currentBranchResult = await $`git rev-parse --abbrev-ref HEAD`
+            .cwd(this.repoPath)
+            .stdout("piped")
             .quiet();
           const currentBranch = currentBranchResult.stdout.trim();
 
           // Try to get parent commit
-          const parentResult = await $`git rev-parse ${analysis.earliestCommitWithTrailer}^`.stdout(
-            "piped",
-          ).noThrow().quiet();
+          const parentResult = await $`git rev-parse ${analysis.earliestCommitWithTrailer}^`
+            .cwd(this.repoPath)
+            .stdout("piped")
+            .noThrow()
+            .quiet();
           let revisionRange = currentBranch;
 
           if (parentResult.code === 0) {
@@ -91,9 +101,13 @@ export class CommitCleaner {
             revisionRange = `${formatGitRef(parentSha)}..${currentBranch}`;
           }
 
-          this.logger.info(`  git filter-branch -f --msg-filter <clean-script> ${revisionRange}`);
+          this.logger.info(
+            `  git filter-branch -f --msg-filter <clean-script> ${revisionRange}`,
+          );
         } catch {
-          this.logger.info(`  git filter-branch -f --msg-filter <clean-script> HEAD`);
+          this.logger.info(
+            `  git filter-branch -f --msg-filter <clean-script> HEAD`,
+          );
         }
       }
 
@@ -111,7 +125,9 @@ export class CommitCleaner {
       return analysis;
     }
 
-    this.logger.info(`Found ${analysis.commitsWithClaudeTrailers} commits with Claude trailers`);
+    this.logger.info(
+      `Found ${analysis.commitsWithClaudeTrailers} commits with Claude trailers`,
+    );
     this.logger.info("Starting git filter-branch to clean commit messages...");
 
     await this.executeCommitCleaning(analysis.earliestCommitWithTrailer);
@@ -156,11 +172,14 @@ export class CommitCleaner {
     };
   }
 
-  private async getCommitList(branch: string): Promise<Array<{ sha: string; subject: string }>> {
+  private async getCommitList(
+    branch: string,
+  ): Promise<Array<{ sha: string; subject: string }>> {
     try {
-      const result = await $`git rev-list --format="%H|%s" ${branch}`.stdout("piped").stderr(
-        "piped",
-      );
+      const result = await $`git rev-list --format="%H|%s" ${branch}`
+        .cwd(this.repoPath)
+        .stdout("piped")
+        .stderr("piped");
 
       const commits: Array<{ sha: string; subject: string }> = [];
       const lines = result.stdout.split("\n").filter((line) => line.trim());
@@ -189,7 +208,10 @@ export class CommitCleaner {
 
   private async getCommitMessage(sha: string): Promise<string> {
     try {
-      const result = await $`git log -1 --format=%B ${sha}`.stdout("piped").stderr("piped");
+      const result = await $`git log -1 --format=%B ${sha}`
+        .cwd(this.repoPath)
+        .stdout("piped")
+        .stderr("piped");
       return result.stdout;
     } catch (error) {
       throw new AppError(
@@ -200,7 +222,10 @@ export class CommitCleaner {
     }
   }
 
-  private cleanCommitMessage(message: string): { cleanedMessage: string; trailersFound: string[] } {
+  private cleanCommitMessage(message: string): {
+    cleanedMessage: string;
+    trailersFound: string[];
+  } {
     let cleanedMessage = message;
     const trailersFound: string[] = [];
 
@@ -251,9 +276,11 @@ deno run --allow-read "${scriptPath}"
       await Deno.chmod(wrapperPath, 0o755);
 
       // Get the current branch name to limit rewriting to only that branch
-      const currentBranchResult = await $`git rev-parse --abbrev-ref HEAD`.stdout("piped").stderr(
-        "piped",
-      ).noThrow();
+      const currentBranchResult = await $`git rev-parse --abbrev-ref HEAD`
+        .cwd(this.repoPath)
+        .stdout("piped")
+        .stderr("piped")
+        .noThrow();
       if (currentBranchResult.code !== 0) {
         throw new AppError(
           "Failed to get current branch name",
@@ -267,8 +294,11 @@ deno run --allow-read "${scriptPath}"
       let revisionRange = currentBranch;
       if (earliestCommitWithTrailer) {
         // Try to get the parent of the earliest commit
-        const parentResult = await $`git rev-parse ${earliestCommitWithTrailer}^`.stdout("piped")
-          .stderr("piped").noThrow();
+        const parentResult = await $`git rev-parse ${earliestCommitWithTrailer}^`
+          .cwd(this.repoPath)
+          .stdout("piped")
+          .stderr("piped")
+          .noThrow();
 
         if (parentResult.code === 0) {
           // Parent exists, use range from parent to current branch
@@ -276,14 +306,18 @@ deno run --allow-read "${scriptPath}"
           revisionRange = `${parentSha}..${currentBranch}`;
           this.logger.info(
             `Optimizing: rewriting from ${
-              formatGitRef(earliestCommitWithTrailer)
+              formatGitRef(
+                earliestCommitWithTrailer,
+              )
             } to ${currentBranch}`,
           );
         } else {
           // No parent (earliest commit is the first commit in repo), rewrite all history
           this.logger.info(
             `Earliest commit ${
-              formatGitRef(earliestCommitWithTrailer)
+              formatGitRef(
+                earliestCommitWithTrailer,
+              )
             } is the first commit, rewriting entire branch history`,
           );
         }
@@ -291,12 +325,20 @@ deno run --allow-read "${scriptPath}"
 
       // Execute git filter-branch with our TypeScript-based cleaning script
       const filterBranchCmd = `git filter-branch -f --msg-filter ${
-        escapeShellArg(wrapperPath)
+        escapeShellArg(
+          wrapperPath,
+        )
       } ${revisionRange}`;
       this.logger.info(`Running: ${filterBranchCmd}`);
       const filterBranchResult = await $`git filter-branch -f --msg-filter ${
-        escapeShellArg(wrapperPath)
-      } ${revisionRange}`.stdout("piped").stderr("piped").noThrow();
+        escapeShellArg(
+          wrapperPath,
+        )
+      } ${revisionRange}`
+        .cwd(this.repoPath)
+        .stdout("piped")
+        .stderr("piped")
+        .noThrow();
 
       if (filterBranchResult.code !== 0) {
         throw new AppError(
@@ -409,12 +451,13 @@ if (cleanedMessage.trim()) {
 
   async validateGitRepository(): Promise<void> {
     try {
-      const result = await $`git rev-parse --git-dir`.stdout("piped").stderr("piped").noThrow();
+      const result = await $`git rev-parse --git-dir`
+        .cwd(this.repoPath)
+        .stdout("piped")
+        .stderr("piped")
+        .noThrow();
       if (result.code !== 0) {
-        throw new AppError(
-          "Not in a Git repository",
-          "NOT_GIT_REPOSITORY",
-        );
+        throw new AppError("Not in a Git repository", "NOT_GIT_REPOSITORY");
       }
     } catch (error) {
       throw new AppError(
@@ -427,7 +470,10 @@ if (cleanedMessage.trim()) {
 
   async checkWorkingTreeClean(): Promise<void> {
     try {
-      const result = await $`git status --porcelain`.stdout("piped").stderr("piped");
+      const result = await $`git status --porcelain`
+        .cwd(this.repoPath)
+        .stdout("piped")
+        .stderr("piped");
       if (result.stdout.trim()) {
         throw new AppError(
           "Working tree is not clean. Please commit or stash your changes before running commit cleaning",
@@ -452,7 +498,10 @@ if (cleanedMessage.trim()) {
       const backupBranch = `backup/pre-claude-clean-${timestamp}`;
 
       this.logger.info(`Running: git branch ${backupBranch} ${branch}`);
-      const result = await $`git branch ${backupBranch} ${branch}`.stdout("piped").stderr("piped")
+      const result = await $`git branch ${backupBranch} ${branch}`
+        .cwd(this.repoPath)
+        .stdout("piped")
+        .stderr("piped")
         .noThrow();
       if (result.code !== 0) {
         throw new AppError(

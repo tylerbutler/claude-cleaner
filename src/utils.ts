@@ -1,5 +1,5 @@
-import { dirname, join, resolve } from "https://deno.land/std@0.208.0/path/mod.ts";
 import { exists } from "https://deno.land/std@0.208.0/fs/mod.ts";
+import { dirname, join, resolve } from "https://deno.land/std@0.208.0/path/mod.ts";
 
 export interface Logger {
   info(message: string): void;
@@ -153,5 +153,63 @@ export class AppError extends Error {
   ) {
     super(message);
     this.name = "AppError";
+  }
+}
+
+export async function loadDirectoryPatterns(
+  includeDirs: string[] | undefined,
+  includeDirsFile: string | undefined,
+  logger: Logger,
+): Promise<string[]> {
+  const patterns: string[] = [...(includeDirs || [])];
+
+  if (includeDirsFile) {
+    try {
+      const fileContent = await Deno.readTextFile(includeDirsFile);
+      const fileDirs = fileContent
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("#"));
+      patterns.push(...fileDirs);
+      logger.verbose(
+        `Loaded ${fileDirs.length} directory patterns from ${includeDirsFile}`,
+      );
+    } catch (error) {
+      throw new AppError(
+        `Failed to read directory patterns file: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        "FILE_READ_ERROR",
+      );
+    }
+  }
+
+  return patterns;
+}
+
+export interface DependencyCheckResult {
+  tool: string;
+  available: boolean;
+  version?: string | undefined;
+  path?: string | undefined;
+  error?: string | undefined;
+}
+
+export function checkForMissingDependencies(
+  depResults: DependencyCheckResult[],
+  isDryRun: boolean,
+  logger: Logger,
+): void {
+  const missingDeps = depResults.filter((result) => !result.available);
+
+  if (missingDeps.length > 0 && !isDryRun) {
+    logger.error("Missing required dependencies:");
+    for (const dep of missingDeps) {
+      logger.error(`  - ${dep.tool}: ${dep.error || "not found"}`);
+    }
+    logger.info(
+      "Run with --auto-install to install dependencies automatically",
+    );
+    throw new AppError("Missing dependencies", "MISSING_DEPENDENCIES");
   }
 }

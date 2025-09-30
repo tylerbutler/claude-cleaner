@@ -9,10 +9,13 @@ import { createMockTool, runWithPath } from "../utils/test-helpers.ts";
 // These will be implemented when the dependency manager is available
 
 Deno.test("Integration - Dependency Installation", async (t) => {
-  await t.step("should install all dependencies with --auto-install", async () => {
-    // TODO: Test complete dependency installation workflow
-    // $ deno run --allow-all src/main.ts --check-deps --auto-install
-  });
+  await t.step(
+    "should install all dependencies with --auto-install",
+    async () => {
+      // TODO: Test complete dependency installation workflow
+      // $ deno run --allow-all src/main.ts --check-deps --auto-install
+    },
+  );
 
   await t.step("should validate existing dependencies", async () => {
     // TODO: Test dependency validation when tools are already installed

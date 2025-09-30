@@ -1,2 +1,4 @@
 [tools]
 deno = "latest"
+hk = "latest"
+pkl = "latest"

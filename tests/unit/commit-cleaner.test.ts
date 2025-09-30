@@ -38,12 +38,15 @@ No Claude artifacts here.`;
 });
 
 Deno.test("Commit Cleaner - Text Processing", async (t) => {
-  await t.step("should remove Claude trailers from commit messages", async () => {
-    // TODO: Implement when src/commit-cleaner.ts exists
-    // const cleaner = new CommitCleaner();
-    // const cleaned = await cleaner.cleanMessage(dirtyMessage);
-    // assertNoClaudeArtifacts(cleaned);
-  });
+  await t.step(
+    "should remove Claude trailers from commit messages",
+    async () => {
+      // TODO: Implement when src/commit-cleaner.ts exists
+      // const cleaner = new CommitCleaner();
+      // const cleaned = await cleaner.cleanMessage(dirtyMessage);
+      // assertNoClaudeArtifacts(cleaned);
+    },
+  );
 
   await t.step("should handle Unicode in commit messages", () => {
     const unicodeMessage = `Add 文档 support

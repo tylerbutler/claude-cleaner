@@ -40,7 +40,11 @@ Deno.test("CLI Options - Directory Patterns", async (t) => {
   });
 
   await t.step("should accept single --include-dirs flag", async () => {
-    const result = await runCLI(["--files-only", "--include-dirs", "claudedocs"]);
+    const result = await runCLI([
+      "--files-only",
+      "--include-dirs",
+      "claudedocs",
+    ]);
 
     // Should run without error (may fail due to missing deps, but not due to CLI parsing)
     assert(
@@ -90,7 +94,11 @@ Deno.test("CLI Options - Directory Patterns", async (t) => {
 
     assert(!result.success);
     assert(result.stderr.includes("INVALID_PATTERN"));
-    assert(result.stderr.includes("parent directory references (..) are not allowed"));
+    assert(
+      result.stderr.includes(
+        "parent directory references (..) are not allowed",
+      ),
+    );
   });
 
   await t.step("should handle multiple invalid patterns", async () => {
@@ -226,7 +234,11 @@ claudedocs
     // Should fail validation for patterns from file
     assert(!result.success);
     assert(result.stderr.includes("INVALID_PATTERN"));
-    assert(result.stderr.includes("parent directory references (..) are not allowed"));
+    assert(
+      result.stderr.includes(
+        "parent directory references (..) are not allowed",
+      ),
+    );
 
     await Deno.remove(patternsFile);
   });
@@ -244,7 +256,8 @@ Deno.test("CLI Options - Integration with Existing Flags", async (t) => {
     ]);
 
     assert(
-      result.stdout.includes("Files-only mode") || result.stderr.includes("MISSING_DEPENDENCIES"),
+      result.stdout.includes("Files-only mode") ||
+        result.stderr.includes("MISSING_DEPENDENCIES"),
     );
   });
 
@@ -257,7 +270,8 @@ Deno.test("CLI Options - Integration with Existing Flags", async (t) => {
 
     // commits-only should ignore include-dirs (only affects file cleaning)
     assert(
-      result.stdout.includes("Commits-only mode") || result.stderr.includes("MISSING_DEPENDENCIES"),
+      result.stdout.includes("Commits-only mode") ||
+        result.stderr.includes("MISSING_DEPENDENCIES"),
     );
   });
 
@@ -269,7 +283,10 @@ Deno.test("CLI Options - Integration with Existing Flags", async (t) => {
       "--verbose",
     ]);
 
-    assert(result.stdout.includes("System info") || result.stderr.includes("MISSING_DEPENDENCIES"));
+    assert(
+      result.stdout.includes("System info") ||
+        result.stderr.includes("MISSING_DEPENDENCIES"),
+    );
   });
 
   await t.step("should work with dry-run (default)", async () => {

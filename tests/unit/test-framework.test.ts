@@ -6,6 +6,13 @@ import { assert, assertExists } from "@std/assert";
 import { exists } from "@std/fs";
 import { join } from "@std/path";
 import {
+  createCleanRepo,
+  createFullTestRepo,
+  createMinimalRepo,
+  createRepoWithClaudeCommits,
+  createRepoWithClaudeFiles,
+} from "../utils/fixtures.ts";
+import {
   assertNoClaudeArtifacts,
   assertValidGitRepo,
   createTestRepo,
@@ -13,13 +20,6 @@ import {
   getRepoFiles,
   hasClaudeArtifacts,
 } from "../utils/test-helpers.ts";
-import {
-  createCleanRepo,
-  createFullTestRepo,
-  createMinimalRepo,
-  createRepoWithClaudeCommits,
-  createRepoWithClaudeFiles,
-} from "../utils/fixtures.ts";
 
 Deno.test("Test Helpers", async (t) => {
   await t.step("createTestRepo creates valid Git repository", async () => {
@@ -35,8 +35,14 @@ Deno.test("Test Helpers", async (t) => {
   });
 
   await t.step("hasClaudeArtifacts detects Claude content", () => {
-    assert(hasClaudeArtifacts("🤖 Generated with [Claude Code](https://claude.ai/code)"));
-    assert(hasClaudeArtifacts("Co-Authored-By: Claude <noreply@anthropic.com>"));
+    assert(
+      hasClaudeArtifacts(
+        "🤖 Generated with [Claude Code](https://claude.ai/code)",
+      ),
+    );
+    assert(
+      hasClaudeArtifacts("Co-Authored-By: Claude <noreply@anthropic.com>"),
+    );
     assert(hasClaudeArtifacts("Generated with Claude"));
     assert(!hasClaudeArtifacts("This is clean content"));
     assert(!hasClaudeArtifacts("Regular commit message"));
@@ -107,18 +113,21 @@ Deno.test("Fixtures", async (t) => {
     }
   });
 
-  await t.step("createRepoWithClaudeFiles includes Claude artifacts", async () => {
-    const repo = await createRepoWithClaudeFiles();
+  await t.step(
+    "createRepoWithClaudeFiles includes Claude artifacts",
+    async () => {
+      const repo = await createRepoWithClaudeFiles();
 
-    try {
-      await assertValidGitRepo(repo.path);
-      assert(await exists(join(repo.path, "CLAUDE.md")));
-      assert(await exists(join(repo.path, ".claude")));
-      assert(await exists(join(repo.path, ".vscode", "claude.json")));
-    } finally {
-      await repo.cleanup();
-    }
-  });
+      try {
+        await assertValidGitRepo(repo.path);
+        assert(await exists(join(repo.path, "CLAUDE.md")));
+        assert(await exists(join(repo.path, ".claude")));
+        assert(await exists(join(repo.path, ".vscode", "claude.json")));
+      } finally {
+        await repo.cleanup();
+      }
+    },
+  );
 
   await t.step("createRepoWithClaudeCommits has Claude trailers", async () => {
     const repo = await createRepoWithClaudeCommits();
@@ -163,8 +172,8 @@ Deno.test("Fixtures", async (t) => {
       await assertValidGitRepo(repo.path);
 
       // Should not have Claude files
-      assert(!await exists(join(repo.path, "CLAUDE.md")));
-      assert(!await exists(join(repo.path, ".claude")));
+      assert(!(await exists(join(repo.path, "CLAUDE.md"))));
+      assert(!(await exists(join(repo.path, ".claude"))));
 
       // Should not have Claude commit trailers
       const messages = await getCommitMessages(repo.path);
@@ -182,13 +191,17 @@ Deno.test("Cross-platform compatibility", async (t) => {
 
     try {
       // Test with nested directories
-      await Deno.mkdir(join(repo.path, "deep", "nested", "path"), { recursive: true });
+      await Deno.mkdir(join(repo.path, "deep", "nested", "path"), {
+        recursive: true,
+      });
       await Deno.writeTextFile(
         join(repo.path, "deep", "nested", "path", "file.txt"),
         "content",
       );
 
-      assert(await exists(join(repo.path, "deep", "nested", "path", "file.txt")));
+      assert(
+        await exists(join(repo.path, "deep", "nested", "path", "file.txt")),
+      );
     } finally {
       await repo.cleanup();
     }
@@ -199,7 +212,9 @@ Deno.test("Cross-platform compatibility", async (t) => {
 
     try {
       // Create directory with spaces
-      await Deno.mkdir(join(repo.path, "folder with spaces"), { recursive: true });
+      await Deno.mkdir(join(repo.path, "folder with spaces"), {
+        recursive: true,
+      });
       await Deno.writeTextFile(
         join(repo.path, "folder with spaces", "file.txt"),
         "content",
