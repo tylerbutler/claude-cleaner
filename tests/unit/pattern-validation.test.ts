@@ -121,8 +121,8 @@ Deno.test("Pattern Warning System", async (t) => {
     // Capture console output to test warnings
     const warnings: string[] = [];
     const mockLogger = {
-      info: (msg: string) => warnings.push(msg),
-      warn: () => {},
+      info: () => {},
+      warn: (msg: string) => warnings.push(msg),
       error: () => {},
       verbose: () => {},
       debug: () => {},

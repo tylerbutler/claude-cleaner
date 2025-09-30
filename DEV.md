@@ -26,7 +26,8 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 
 - **main.ts**: CLI entry point using Cliffy framework
 - **dependency-manager.ts**: Handles mise integration and external tool management
-- **cleaner.ts**: Core cleaning logic for files and commits
+- **file-cleaner.ts**: File removal logic using BFG Repo-Cleaner
+- **commit-cleaner.ts**: Commit message cleaning logic
 - **utils.ts**: Shared utilities
 
 ### Dependencies
@@ -50,7 +51,7 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 
 ### What Gets Cleaned
 
-- Files: `CLAUDE.md`, `.claude/` directories, `.vscode/claude.json`, temporary Claude files
+- Files: `CLAUDE.md`, `.claude/` directories, `claudedocs/` directories, `.serena/` directories, `.vscode/claude.json`, temporary Claude files
 - Commit trailers: `🤖 Generated with [Claude Code](...)`, `Co-Authored-By: Claude <...>`
 
 ## Testing
@@ -62,8 +63,22 @@ tests/
 ├── unit/           # Unit tests for individual modules
 ├── integration/    # Integration tests for full workflows
 ├── utils/          # Test utilities and helpers
+├── README-pattern-tests.md  # Comprehensive pattern matching documentation
 └── run-all-tests.ts # Test runner script
 ```
+
+> [!NOTE]
+> See `tests/README-pattern-tests.md` for detailed documentation on pattern matching behavior and test coverage.
+
+### Test Coverage
+
+The comprehensive test suite includes **41 test steps** covering:
+
+- **Pattern matching behavior**: Exact basename matching, safety validation, warning system
+- **Directory pattern system**: Custom prefix/suffix/substring matching
+- **Default patterns**: Standard Claude file and directory removal
+- **Extended patterns**: Comprehensive cleanup with `--include-all-common-patterns`
+- **Integration workflows**: End-to-end cleaning operations
 
 ### Running Tests
 
@@ -157,8 +172,9 @@ try {
 
 ### Safety Features
 
-- Dry-run mode for previewing changes
+- Dry-run mode by default (use `--execute` to apply changes)
 - Automatic backup creation before operations
+- Exact basename pattern matching for file safety
 - Cross-platform path handling
 - Comprehensive error handling
 
@@ -185,8 +201,14 @@ Deno.test("Module - Feature", async (t) => {
 2. **Format code**: Use `deno fmt` for consistent formatting
 3. **Type check**: Run `deno check src/main.ts` to verify types
 4. **Cross-platform**: Test on multiple operating systems when possible
-5. **Documentation**: Update this guide when adding new features
+5. **Documentation**: Update [README.md](README.md), [CLAUDE.md](CLAUDE.md), and this guide when adding new features
 6. **Clean up**: Always clean up temporary files in tests
+
+## Related Documentation
+
+- [README.md](README.md) - User-facing documentation and usage examples
+- [CLAUDE.md](CLAUDE.md) - Development guidance for Claude Code
+- [tests/README-pattern-tests.md](tests/README-pattern-tests.md) - Comprehensive pattern matching test documentation
 
 ## Dependency Management
 

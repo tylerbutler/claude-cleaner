@@ -138,6 +138,13 @@ export function escapeShellArg(arg: string): string {
   return `'${arg.replace(/'/g, "'\"'\"'")}'`;
 }
 
+export function formatGitRef(ref: string): string {
+  // ANSI codes: bold blue for first 8 chars, regular blue for rest
+  const shortRef = ref.substring(0, 8);
+  const rest = ref.substring(8);
+  return `\x1b[1;34m${shortRef}\x1b[0;34m${rest}\x1b[0m`;
+}
+
 export class AppError extends Error {
   constructor(
     message: string,

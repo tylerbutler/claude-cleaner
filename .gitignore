@@ -25,3 +25,5 @@ Thumbs.db
 # Test artifacts
 test-repos/
 backup-*/
+.claude
+.serena

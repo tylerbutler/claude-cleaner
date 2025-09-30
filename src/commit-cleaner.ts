@@ -1,6 +1,6 @@
 import { $ } from "dax";
 import type { Logger } from "./utils.ts";
-import { AppError, escapeShellArg } from "./utils.ts";
+import { AppError, escapeShellArg, formatGitRef } from "./utils.ts";
 
 export interface CommitCleanOptions {
   dryRun?: boolean | undefined;
@@ -69,6 +69,34 @@ export class CommitCleaner {
 
     if (options.dryRun) {
       this.logger.info("Dry-run mode: showing preview of changes");
+
+      // Show commands that would be executed
+      if (analysis.commitsWithClaudeTrailers > 0 && analysis.earliestCommitWithTrailer) {
+        this.logger.info("\n[DRY RUN] Commands that would be executed:");
+
+        // Get current branch
+        try {
+          const currentBranchResult = await $`git rev-parse --abbrev-ref HEAD`.stdout("piped")
+            .quiet();
+          const currentBranch = currentBranchResult.stdout.trim();
+
+          // Try to get parent commit
+          const parentResult = await $`git rev-parse ${analysis.earliestCommitWithTrailer}^`.stdout(
+            "piped",
+          ).noThrow().quiet();
+          let revisionRange = currentBranch;
+
+          if (parentResult.code === 0) {
+            const parentSha = parentResult.stdout.trim();
+            revisionRange = `${formatGitRef(parentSha)}..${currentBranch}`;
+          }
+
+          this.logger.info(`  git filter-branch -f --msg-filter <clean-script> ${revisionRange}`);
+        } catch {
+          this.logger.info(`  git filter-branch -f --msg-filter <clean-script> HEAD`);
+        }
+      }
+
       return {
         totalCommits: analysis.totalCommits,
         commitsWithClaudeTrailers: analysis.commitsWithClaudeTrailers,
@@ -86,7 +114,7 @@ export class CommitCleaner {
     this.logger.info(`Found ${analysis.commitsWithClaudeTrailers} commits with Claude trailers`);
     this.logger.info("Starting git filter-branch to clean commit messages...");
 
-    await this.executeCommitCleaning(branch, analysis.earliestCommitWithTrailer);
+    await this.executeCommitCleaning(analysis.earliestCommitWithTrailer);
 
     this.logger.info("Commit cleaning completed successfully");
     return analysis;
@@ -111,7 +139,7 @@ export class CommitCleaner {
 
         preview.push({
           sha: commit.sha,
-          shortSha: commit.sha.substring(0, 7),
+          shortSha: formatGitRef(commit.sha),
           originalMessage,
           cleanedMessage,
           trailersFound,
@@ -201,7 +229,6 @@ export class CommitCleaner {
   }
 
   private async executeCommitCleaning(
-    branch: string,
     earliestCommitWithTrailer?: string,
   ): Promise<void> {
     try {
@@ -249,20 +276,24 @@ deno run --allow-read "${scriptPath}"
           revisionRange = `${parentSha}..${currentBranch}`;
           this.logger.info(
             `Optimizing: rewriting from ${
-              earliestCommitWithTrailer.substring(0, 7)
+              formatGitRef(earliestCommitWithTrailer)
             } to ${currentBranch}`,
           );
         } else {
           // No parent (earliest commit is the first commit in repo), rewrite all history
           this.logger.info(
             `Earliest commit ${
-              earliestCommitWithTrailer.substring(0, 7)
+              formatGitRef(earliestCommitWithTrailer)
             } is the first commit, rewriting entire branch history`,
           );
         }
       }
 
       // Execute git filter-branch with our TypeScript-based cleaning script
+      const filterBranchCmd = `git filter-branch -f --msg-filter ${
+        escapeShellArg(wrapperPath)
+      } ${revisionRange}`;
+      this.logger.info(`Running: ${filterBranchCmd}`);
       const filterBranchResult = await $`git filter-branch -f --msg-filter ${
         escapeShellArg(wrapperPath)
       } ${revisionRange}`.stdout("piped").stderr("piped").noThrow();
@@ -420,6 +451,7 @@ if (cleanedMessage.trim()) {
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const backupBranch = `backup/pre-claude-clean-${timestamp}`;
 
+      this.logger.info(`Running: git branch ${backupBranch} ${branch}`);
       const result = await $`git branch ${backupBranch} ${branch}`.stdout("piped").stderr("piped")
         .noThrow();
       if (result.code !== 0) {

@@ -1,6 +1,5 @@
-import { $ } from "https://deno.land/x/dax@0.36.0/mod.ts";
+import { $, CommandBuilder } from "https://deno.land/x/dax@0.36.0/mod.ts";
 import { basename, join } from "https://deno.land/std@0.208.0/path/mod.ts";
-import { walk } from "https://deno.land/std@0.208.0/fs/walk.ts";
 import { AppError, dirExists, fileExists, type Logger } from "./utils.ts";
 
 export interface FileCleanerOptions {
@@ -17,6 +16,11 @@ export interface ClaudeFile {
   path: string;
   type: "file" | "directory";
   reason: string;
+  earliestCommit?: {
+    hash: string;
+    date: string;
+    message: string;
+  };
 }
 
 export class FileCleaner {
@@ -34,38 +38,109 @@ export class FileCleaner {
     // Validate user patterns first
     this.validateDirectoryPatterns();
 
-    this.logger.verbose("Scanning repository for files to remove...");
+    this.logger.verbose("Scanning Git history for files to remove...");
 
     try {
-      for await (
-        const entry of walk(repoPath, {
-          includeDirs: true,
-          skip: [/\.git$/], // Skip .git directory but allow .claude directories
-        })
-      ) {
-        const relativePath = entry.path.replace(repoPath + "/", "");
+      // Get all files that have ever existed in Git history
+      const result = await $`git log --all --pretty=format: --name-only --diff-filter=A`
+        .cwd(repoPath)
+        .quiet();
 
-        // Skip if this is the root directory
-        if (relativePath === repoPath) continue;
+      const historicalFiles = result.stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
 
-        if (this.isTargetFile(entry.path, relativePath)) {
-          claudeFiles.push({
+      // Remove duplicates
+      const uniqueFiles = [...new Set(historicalFiles)];
+
+      this.logger.verbose(`Checking ${uniqueFiles.length} files from Git history...`);
+
+      // Check each file against our patterns
+      for (const relativePath of uniqueFiles) {
+        if (this.isTargetFile(relativePath, relativePath)) {
+          // Determine if it's a directory or file based on path
+          const isDirectory = relativePath.endsWith("/") ||
+            uniqueFiles.some((f) => f.startsWith(relativePath + "/"));
+
+          // Find the earliest commit for this file
+          const earliestCommit = await this.findEarliestCommit(relativePath);
+
+          const fileEntry: ClaudeFile = {
             path: relativePath,
-            type: entry.isDirectory ? "directory" : "file",
+            type: isDirectory ? "directory" : "file",
             reason: this.getFileReason(relativePath),
-          });
+          };
+
+          if (earliestCommit) {
+            fileEntry.earliestCommit = earliestCommit;
+          }
+
+          claudeFiles.push(fileEntry);
         }
       }
     } catch (error) {
       throw new AppError(
-        `Failed to scan repository: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to scan Git history: ${error instanceof Error ? error.message : String(error)}`,
         "SCAN_ERROR",
         error instanceof Error ? error : undefined,
       );
     }
 
-    this.logger.verbose(`Found ${claudeFiles.length} files/directories to remove`);
+    this.logger.verbose(`Found ${claudeFiles.length} files/directories to remove from Git history`);
     return claudeFiles;
+  }
+
+  private async findEarliestCommit(filePath: string): Promise<
+    {
+      hash: string;
+      date: string;
+      message: string;
+    } | undefined
+  > {
+    try {
+      // Find the earliest commit that added this file
+      // Use --diff-filter=A to find when file was added
+      // Use --reverse to get oldest first
+      // Build command with properly escaped arguments
+      const builder = new CommandBuilder()
+        .command([
+          "git",
+          "log",
+          "--all",
+          "--reverse",
+          "--diff-filter=A",
+          "--format=%H|%aI|%s",
+          "--max-count=1",
+          "--",
+          filePath,
+        ])
+        .cwd(this.options.repoPath)
+        .quiet();
+      const result = await builder;
+
+      const output = result.stdout.trim();
+
+      if (!output) {
+        return undefined;
+      }
+
+      const [hash, date, ...messageParts] = output.split("|");
+
+      if (!hash || !date) {
+        return undefined;
+      }
+
+      const message = messageParts.join("|").trim(); // Rejoin in case message had pipes
+
+      return {
+        hash: hash.substring(0, 8), // Short hash
+        date,
+        message: message.length > 60 ? message.substring(0, 57) + "..." : message,
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   private validateDirectoryPatterns(): void {
@@ -143,6 +218,10 @@ export class FileCleaner {
 
     // Claude directories
     if (fileName === ".claude" || relativePath.includes("/.claude/")) return true;
+
+    // Common MCP server directories
+    if (fileName === "claudedocs" || relativePath.includes("/claudedocs/")) return true;
+    if (fileName === ".serena" || relativePath.includes("/.serena/")) return true;
 
     // VSCode Claude configuration
     if (relativePath.includes("/.vscode/claude.json")) return true;
@@ -263,6 +342,12 @@ export class FileCleaner {
       if (fileName === ".claude" || path.includes("/.claude/")) {
         return "Claude configuration directory";
       }
+      if (fileName === "claudedocs" || path.includes("/claudedocs/")) {
+        return "Claude documentation directory (MCP server)";
+      }
+      if (fileName === ".serena" || path.includes("/.serena/")) {
+        return "Serena MCP server directory";
+      }
       if (path.includes("/.vscode/claude.json")) {
         return "VSCode Claude extension configuration";
       }
@@ -344,6 +429,14 @@ export class FileCleaner {
       return "Claude configuration directory";
     }
 
+    if (fileName === "claudedocs" || path.includes("/claudedocs/")) {
+      return "Claude documentation directory (MCP server)";
+    }
+
+    if (fileName === ".serena" || path.includes("/.serena/")) {
+      return "Serena MCP server directory";
+    }
+
     if (path.includes("/.vscode/claude.json")) {
       return "VSCode Claude extension configuration";
     }
@@ -378,6 +471,7 @@ export class FileCleaner {
 
     try {
       // Create a bare clone for the backup
+      this.logger.info(`Running: git clone --bare ${this.options.repoPath} ${backupPath}`);
       await $`git clone --bare ${this.options.repoPath} ${backupPath}`.cwd(this.options.repoPath);
       this.logger.verbose(`Backup created at: ${backupPath}`);
       return backupPath;
@@ -401,8 +495,50 @@ export class FileCleaner {
     if (this.options.dryRun) {
       this.logger.info("[DRY RUN] Would remove the following files:");
       for (const file of claudeFiles) {
-        this.logger.info(`  - ${file.path} (${file.reason})`);
+        let logLine = `  - ${file.path} (${file.reason})`;
+        if (file.earliestCommit) {
+          logLine +=
+            `\n    First appeared in: ${file.earliestCommit.hash} (${file.earliestCommit.date})`;
+          logLine += `\n    Commit: ${file.earliestCommit.message}`;
+        }
+        this.logger.info(logLine);
       }
+
+      // Show commands that would be executed
+      const files = claudeFiles.filter((f) => f.type === "file");
+      const directories = claudeFiles.filter((f) => f.type === "directory");
+
+      if (files.length > 0 || directories.length > 0) {
+        this.logger.info("\n[DRY RUN] Commands that would be executed:");
+
+        if (files.length > 0) {
+          const fileNames = files.map((f) => basename(f.path));
+          const uniqueFileNames = [...new Set(fileNames)];
+          for (const fileName of uniqueFileNames) {
+            this.logger.info(
+              `  java -jar ${
+                this.bfgPath || "<bfg-path>"
+              } --delete-files ${fileName} --no-blob-protection ${this.options.repoPath}`,
+            );
+          }
+        }
+
+        if (directories.length > 0) {
+          const dirNames = directories.map((d) => basename(d.path));
+          const uniqueDirNames = [...new Set(dirNames)];
+          for (const dirName of uniqueDirNames) {
+            this.logger.info(
+              `  java -jar ${
+                this.bfgPath || "<bfg-path>"
+              } --delete-folders ${dirName} --no-blob-protection ${this.options.repoPath}`,
+            );
+          }
+        }
+
+        this.logger.info(`  git reflog expire --expire=now --all`);
+        this.logger.info(`  git gc --prune=now --aggressive`);
+      }
+
       return;
     }
 
@@ -427,6 +563,9 @@ export class FileCleaner {
 
         for (const fileName of uniqueFileNames) {
           this.logger.verbose(`Removing files named: ${fileName}`);
+          const bfgCmd =
+            `java -jar ${this.bfgPath} --delete-files ${fileName} --no-blob-protection ${this.options.repoPath}`;
+          this.logger.info(`Running: ${bfgCmd}`);
           await $`java -jar ${this.bfgPath} --delete-files ${fileName} --no-blob-protection ${this.options.repoPath}`;
         }
       }
@@ -438,13 +577,18 @@ export class FileCleaner {
 
         for (const dirName of uniqueDirNames) {
           this.logger.verbose(`Removing directories named: ${dirName}`);
+          const bfgCmd =
+            `java -jar ${this.bfgPath} --delete-folders ${dirName} --no-blob-protection ${this.options.repoPath}`;
+          this.logger.info(`Running: ${bfgCmd}`);
           await $`java -jar ${this.bfgPath} --delete-folders ${dirName} --no-blob-protection ${this.options.repoPath}`;
         }
       }
 
       // Clean up the repository
       this.logger.verbose("Cleaning up Git repository...");
+      this.logger.info(`Running: git reflog expire --expire=now --all`);
       await $`git reflog expire --expire=now --all`.cwd(this.options.repoPath);
+      this.logger.info(`Running: git gc --prune=now --aggressive`);
       await $`git gc --prune=now --aggressive`.cwd(this.options.repoPath);
 
       this.logger.info("Files successfully removed from Git history");

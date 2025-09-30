@@ -135,6 +135,12 @@ async function cleanAction(options: CleanOptions) {
         for (const file of claudeFiles) {
           const typeIcon = file.type === "directory" ? "📂" : "📄";
           logger.info(`  ${typeIcon} ${file.path} - ${file.reason}`);
+          if (file.earliestCommit) {
+            logger.info(
+              `    ↳ First appeared: ${file.earliestCommit.hash} (${file.earliestCommit.date})`,
+            );
+            logger.info(`      "${file.earliestCommit.message}"`);
+          }
         }
 
         if (isDryRun) {
@@ -226,6 +232,12 @@ async function cleanAction(options: CleanOptions) {
           for (const file of claudeFiles) {
             const typeIcon = file.type === "directory" ? "📂" : "📄";
             logger.info(`  ${typeIcon} ${file.path} - ${file.reason}`);
+            if (file.earliestCommit) {
+              logger.info(
+                `    ↳ First appeared: ${file.earliestCommit.hash} (${file.earliestCommit.date})`,
+              );
+              logger.info(`      "${file.earliestCommit.message}"`);
+            }
           }
 
           if (isDryRun) {

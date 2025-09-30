@@ -3,7 +3,7 @@
 A comprehensive TypeScript/Deno tool to remove Claude artifacts from Git repositories.
 
 > [!IMPORTANT]
-> Always run with `--dry-run` first to preview changes before modifying your repository. Automatic backups are created, but prevention is better than recovery.
+> The tool runs in dry-run mode by default to preview changes. Use `--execute` to apply changes. Automatic backups are created, but prevention is better than recovery.
 
 ## Table of Contents
 
@@ -43,22 +43,87 @@ Claude Cleaner is a professional-grade tool that removes Claude-related files, c
 
 ### Files Removed (Standard Mode)
 
+The tool uses **exact basename matching** for safety. For example:
+
+- **`CLAUDE.md`** matches only files named exactly `CLAUDE.md` (not `CLAUDE.md.backup` or `MY-CLAUDE.md`)
+- **`.claude/`** matches only directories named exactly `.claude` (not `.claude2` or `my.claude`)
+- **`.vscode/claude.json`** matches the exact path `.vscode/claude.json` only
+
+**Standard patterns:**
+
 - **`CLAUDE.md`** - Project-specific Claude instructions
 - **`.claude/` directories** - Claude workspace configurations
+- **`claudedocs/` directories** - Claude documentation (MCP server)
+- **`.serena/` directories** - Serena MCP server data
 - **`.vscode/claude.json`** - VSCode Claude extension settings
 - **Temporary Claude files** - Auto-generated temporary files
 
+> [!NOTE]
+> Use `--include-dirs <name>` to match additional directories like `.claude-backup` or `claude-workspace` (matches by exact directory name anywhere in the repository)
+
 ### Additional Files (With `--include-all-common-patterns`)
 
-- **Claude configuration files** - `.config.json`, `.yaml`, `.toml`, `.ini` variants
-- **Claude session/state files** - Session data, cache, history files
-- **Claude temporary/working files** - Scratch files, drafts, backups
-- **Claude process files** - Lock files, PIDs, sockets, debug traces
-- **IDE integration files** - Extended VS Code, IntelliJ, Eclipse Claude files
-- **Claude directories** - Workspace, project, session, temp, cache directories
-- **Claude documentation** - Notes, docs, readme, instruction files
-- **Claude scripts** - Shell scripts, Python tools, utilities
-- **Numbered/versioned files** - Backup files, versioned configs, session IDs
+> [!NOTE]
+> This flag enables comprehensive cleanup by matching many more Claude-related file patterns. Always review dry-run output first.
+
+**Configuration Files:**
+
+- `claude*.json|yaml|yml|toml|ini|config`
+- `claude-config*`, `claude-settings*`, `claude-workspace*`, `claude-env*`
+
+**Session & State Files:**
+
+- `claude-session*`, `claude-state*`, `claude-cache*`, `claude-history*`
+
+**Temporary & Working Files:**
+
+- `claude-temp*`, `claude-tmp*`, `claude-work*`, `claude-scratch*`, `claude-draft*`
+- `claude*.bak|backup|old|orig|save`
+- `claude-output*`, `claude-result*`, `claude-analysis*`, `claude-report*`
+
+**Process Files:**
+
+- `claude*.lock|pid|socket`
+- `claude-lock*`, `claude-process*`, `claude-run*`
+
+**Debug & Diagnostic Files:**
+
+- `claude-debug*`, `claude-trace*`, `claude-profile*`, `claude-diagnostic*`
+- `claude*.debug|trace|profile|diagnostic`
+
+**Export & Archive Files:**
+
+- `claude-export*`, `claude-archive*`, `claude-dump*`, `claude-snapshot*`
+
+**IDE Integration Files:**
+
+- Any files in `.vscode/`, `.idea/`, `.eclipse/` directories containing "claude"
+
+**Directories:**
+
+- `claude-workspace`, `claude-project`, `claude-sessions`, `claude-temp`, `claude-cache`, `claude-data`
+- Paths containing `/.claude-` or `/claude_`
+
+**Documentation Files:**
+
+- `claude-notes*.md|txt|rst`, `claude-docs*.md|txt|rst`, `claude-readme*.md|txt|rst`
+- `claude-instructions*.md|txt|rst`, `.claude-*.md|txt|rst`
+
+**Scripts & Executables:**
+
+- `claude-script*`, `claude-tool*`, `claude-utility*`, `claude-helper*`
+- `claude*.sh|bat|ps1|py|js|ts`
+
+**Hidden/Dotfiles:**
+
+- `.claude` followed by alphanumeric characters (e.g., `.claude-config`, `.clauderc`)
+
+**Numbered/Versioned Files:**
+
+- Any file matching `claude*[0-9]*` or `claude*v[0-9]*`
+
+> [!TIP]
+> Patterns use wildcards (`*`) to match variations. For example, `claude-session*` matches `claude-session`, `claude-session-123`, `claude-session.json`, etc.
 
 ### Commit Trailers Removed
 
@@ -102,10 +167,10 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 # 1. Check dependencies (auto-installs if needed)
 claude-cleaner check-deps --auto-install
 
-# 2. Preview changes without modifying anything (recommended first step - this is the default)
+# 2. Preview changes without modifying anything (dry-run is the default)
 claude-cleaner --auto-install
 
-# 3. Clean your repository (only after reviewing dry-run output)
+# 3. Execute cleaning (only after reviewing dry-run output)
 claude-cleaner --execute --auto-install
 ```
 
@@ -130,6 +195,9 @@ Options:
   --repo-path <path>                Path to Git repository (default: current directory)
   --branch <branch>                 Specify branch to clean (default: HEAD)
   --include-all-common-patterns     Include ALL known common Claude patterns (for complete cleanup)
+  --include-dirs <name>             Add directory name to remove (matches directories with this name anywhere)
+  --include-dirs-file <file>        Read directory names from file (one pattern per line)
+  --no-defaults                     Don't include default Claude patterns (use only explicit patterns)
 
 Commands:
   check-deps                        Check if all required dependencies are available
@@ -190,7 +258,7 @@ claude-cleaner --include-all-common-patterns --files-only --execute --auto-insta
 ```
 
 > [!WARNING]
-> The `--include-all-common-patterns` flag finds many more files than standard mode. Always use `--dry-run` first to review what will be removed.
+> The `--include-all-common-patterns` flag finds many more files than standard mode. Always review the dry-run output first before using `--execute`.
 
 ### Advanced Workflows
 
@@ -203,7 +271,7 @@ mise install java@temurin-21
 mise install sd
 claude-cleaner --execute
 
-# Verbose output for troubleshooting (dry-run by default)
+# Verbose dry-run output for troubleshooting
 claude-cleaner --verbose
 
 # Check dependencies without installing
@@ -211,6 +279,17 @@ claude-cleaner check-deps
 
 # Execute with verbose output
 claude-cleaner --execute --verbose --auto-install
+
+# Custom directory patterns (can be specified multiple times)
+claude-cleaner --include-dirs "claude-backup" --include-dirs "claude-workspace"
+
+# Read directory patterns from file
+echo "claude-backup" > dirs.txt
+echo "claude-workspace" >> dirs.txt
+claude-cleaner --include-dirs-file dirs.txt
+
+# Use only custom patterns (exclude defaults)
+claude-cleaner --no-defaults --include-dirs "my-claude-files"
 ```
 
 ## How It Works
@@ -254,20 +333,23 @@ claude-cleaner --execute --verbose --auto-install
 - **Naming format**: `backup/pre-claude-clean-YYYY-MM-DDTHH-MM-SS-sssZ`
 - **Easy recovery**: `git checkout backup/...` to restore previous state
 
-### Dry Run Mode
+### Dry Run Mode (Default)
 
 > [!TIP]
-> Use dry-run mode to understand exactly what changes will be made before executing them.
+> The tool runs in dry-run mode by default. Use `--execute` to apply changes.
 
 ```bash
-# Preview file changes (default is dry-run)
+# Preview file changes (dry-run is default)
 claude-cleaner --files-only
 
-# Preview commit changes (default is dry-run)
+# Preview commit changes (dry-run is default)
 claude-cleaner --commits-only
 
-# Preview full cleaning (default is dry-run)
+# Preview full cleaning (dry-run is default)
 claude-cleaner
+
+# Execute after reviewing dry-run output
+claude-cleaner --execute
 ```
 
 ### Validation Checks
@@ -335,7 +417,7 @@ sudo claude-cleaner check-deps --auto-install
 ### Getting Help
 
 ```bash
-# Verbose output for debugging (dry-run by default)
+# Verbose dry-run output for debugging
 claude-cleaner --verbose
 
 # Check dependency status
@@ -345,12 +427,63 @@ claude-cleaner check-deps
 claude-cleaner --help
 ```
 
+### Recovery and Rollback
+
+> [!IMPORTANT]
+> If something goes wrong or you need to undo changes, use these recovery steps.
+
+```bash
+# View available backups
+git branch | grep backup/pre-claude-clean
+
+# Restore from automatic backup
+git checkout backup/pre-claude-clean-2024-01-15T10-30-00-000Z
+
+# If you need to restore your main branch
+git branch -f main backup/pre-claude-clean-2024-01-15T10-30-00-000Z
+git checkout main
+
+# Verify restoration
+git log --oneline -10
+```
+
+> [!WARNING]
+> After restoration, you may need to force push to remote repositories. See the Remote Repositories section below.
+
+### Remote Repositories and Force Pushing
+
+> [!CAUTION]
+> Cleaning Git history rewrites commits, which requires force pushing to remote repositories. This affects all collaborators.
+
+**Before cleaning a shared repository:**
+
+1. **Coordinate with team**: Ensure all collaborators have pushed their work
+2. **Create remote backup**: `git push origin main:backup-main`
+3. **Clean locally**: Run claude-cleaner with `--execute`
+4. **Force push carefully**: `git push --force-with-lease origin main`
+
+> [!WARNING]
+> Force pushing can disrupt team workflows. All collaborators must re-clone or reset their local repositories after you force push.
+
+**Team recovery after force push:**
+
+```bash
+# Option 1: Reset existing repository (preserves uncommitted work)
+git fetch origin
+git reset --hard origin/main
+
+# Option 2: Fresh clone (recommended for simplicity)
+cd ..
+mv old-repo old-repo-backup
+git clone <repository-url>
+```
+
 ## Frequently Asked Questions
 
 ### Safety and Recovery
 
 **Q: Is it safe to use on important repositories?**\
-**A:** Yes! Claude Cleaner creates automatic backups and offers dry-run mode. Always run `--dry-run` first to preview changes.
+**A:** Yes! Claude Cleaner creates automatic backups and runs in dry-run mode by default. Always review the dry-run output before using `--execute`.
 
 **Q: Can I undo the changes?**\
 **A:** Yes, backup branches are created automatically. Use `git checkout backup/pre-claude-clean-...` to restore your repository.
@@ -387,11 +520,11 @@ claude-cleaner --help
 
 ## Development
 
-See `DEV.md` for development setup, testing guidelines, and contribution instructions.
+See [DEV.md](DEV.md) for development setup, testing guidelines, and contribution instructions. For detailed pattern matching test documentation, see [tests/README-pattern-tests.md](tests/README-pattern-tests.md).
 
 ## Contributing
 
-Contributions welcome! Please see `DEV.md` for development setup and contribution guidelines.
+Contributions welcome! Please see [DEV.md](DEV.md) for development setup and contribution guidelines.
 
 ## Acknowledgments
 
