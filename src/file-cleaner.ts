@@ -1,5 +1,5 @@
-import { basename, join } from "https://deno.land/std@0.208.0/path/mod.ts";
-import { $, CommandBuilder } from "https://deno.land/x/dax@0.36.0/mod.ts";
+import { basename, join } from "@std/path";
+import { $, CommandBuilder } from "dax";
 import { AppError, dirExists, fileExists, formatGitRef, type Logger } from "./utils.ts";
 
 // Claude file pattern definitions

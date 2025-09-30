@@ -1,5 +1,5 @@
-import { exists } from "https://deno.land/std@0.208.0/fs/mod.ts";
-import { dirname, join, resolve } from "https://deno.land/std@0.208.0/path/mod.ts";
+import { exists } from "@std/fs";
+import { dirname, join, resolve } from "@std/path";
 
 export interface Logger {
   info(message: string): void;
@@ -48,11 +48,11 @@ export interface PathUtils {
 
 export class CrossPlatformPathUtils implements PathUtils {
   join(...paths: string[]): string {
-    return join(...paths);
+    return join(...(paths as [string, ...string[]]));
   }
 
   resolve(...paths: string[]): string {
-    return resolve(...paths);
+    return resolve(...(paths as [string, ...string[]]));
   }
 
   dirname(path: string): string {

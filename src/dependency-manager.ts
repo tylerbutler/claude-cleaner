@@ -1,4 +1,4 @@
-import { join } from "https://deno.land/std@0.208.0/path/mod.ts";
+import { join } from "@std/path";
 import { $ } from "dax";
 import type { Logger } from "./utils.ts";
 import { AppError, ensureDir, fileExists, getSystemInfo } from "./utils.ts";
