@@ -312,7 +312,7 @@ export class FileCleaner {
       const message = messageParts.join("|").trim(); // Rejoin in case message had pipes
 
       return {
-        hash: hash.substring(0, 8), // Short hash
+        hash, // Full hash - formatting functions will handle shortening/styling
         date,
         message: message.length > 60 ? message.substring(0, 57) + "..." : message,
       };
@@ -785,7 +785,7 @@ export class FileCleaner {
 
     try {
       // Check if repo has any commits
-      await $`git rev-parse HEAD`.cwd(this.options.repoPath);
+      await $`git rev-parse HEAD`.cwd(this.options.repoPath).quiet();
     } catch {
       throw new AppError(
         "Repository has no commits. Cannot clean an empty repository.",
