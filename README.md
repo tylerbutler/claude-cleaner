@@ -97,10 +97,13 @@ The tool automatically installs all required dependencies via [mise](https://mis
 ### Install Claude Cleaner
 
 ```bash
-# Option 1: Download pre-built binary (recommended)
+# Option 1: Install from JSR (recommended)
+deno install -A jsr:@tylerbu/claude-cleaner
+
+# Option 2: Download pre-built binary
 # Download from GitHub releases page
 
-# Option 2: Build from source (requires Deno)
+# Option 3: Build from source (requires Deno)
 git clone https://github.com/yourusername/claude-cleaner  # Replace with actual repository URL
 cd claude-cleaner
 deno compile --allow-all --output claude-cleaner src/main.ts
