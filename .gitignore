@@ -1,0 +1,27 @@
+# Compiled binaries
+claude-cleaner
+claude-cleaner.exe
+
+# Deno
+.deno/
+deno.lock
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Cache
+.cache/
+
+# Test artifacts
+test-repos/
+backup-*/
