@@ -306,10 +306,28 @@ export class DependencyManager {
     await this.installJava();
     await this.installSd();
 
+    // Regenerate shims to make tools available in PATH
+    await this.reshimMise();
+
     // Download BFG JAR
     await this.downloadBfgJar();
 
     this.logger.info("All dependencies installed successfully");
+  }
+
+  private async reshimMise(): Promise<void> {
+    try {
+      const result = await $`mise reshim`
+        .stdout("piped")
+        .stderr("piped")
+        .noThrow();
+      if (result.code !== 0) {
+        this.logger.warn(`mise reshim returned non-zero exit code: ${result.stderr}`);
+      }
+    } catch (error) {
+      // Non-fatal - log warning but continue
+      this.logger.warn(`Failed to reshim mise: ${error}`);
+    }
   }
 
   getBfgJarPath(): string {
