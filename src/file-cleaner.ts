@@ -765,6 +765,55 @@ export class FileCleaner {
     }
   }
 
+  /**
+   * Validates that filenames don't contain characters that would break BFG glob syntax.
+   * Throws an error if invalid characters are found.
+   */
+  private validateFilenamesForBFG(fileNames: string[]): void {
+    const invalidChars = [",", "{", "}"];
+    for (const fileName of fileNames) {
+      for (const char of invalidChars) {
+        if (fileName.includes(char)) {
+          throw new AppError(
+            `Invalid filename '${fileName}': contains special character '${char}' that would break BFG glob syntax`,
+            "INVALID_FILENAME",
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Build BFG command arguments from file and directory lists.
+   * Returns null if no files or directories to process.
+   */
+  private buildBFGCommand(
+    uniqueFileNames: string[],
+    uniqueDirNames: string[],
+  ): string[] | null {
+    if (uniqueFileNames.length === 0 && uniqueDirNames.length === 0) {
+      return null;
+    }
+
+    // Validate filenames don't contain characters that break BFG glob syntax
+    this.validateFilenamesForBFG(uniqueFileNames);
+    this.validateFilenamesForBFG(uniqueDirNames);
+
+    const bfgArgs = ["java", "-jar", this.bfgPath || "<bfg-path>"];
+
+    if (uniqueFileNames.length > 0) {
+      bfgArgs.push("--delete-files", `{${uniqueFileNames.join(",")}}`);
+    }
+
+    if (uniqueDirNames.length > 0) {
+      bfgArgs.push("--delete-folders", `{${uniqueDirNames.join(",")}}`);
+    }
+
+    bfgArgs.push("--no-blob-protection", this.options.repoPath);
+
+    return bfgArgs;
+  }
+
   async removeFilesWithBFG(claudeFiles: ClaudeFile[]): Promise<void> {
     if (claudeFiles.length === 0) {
       this.logger.info("No Claude files found to remove");
@@ -792,21 +841,16 @@ export class FileCleaner {
       const files = claudeFiles.filter((f) => f.type === "file");
       const directories = claudeFiles.filter((f) => f.type === "directory");
 
-      if (files.length > 0 || directories.length > 0) {
+      const fileNames = files.map((f) => basename(f.path));
+      const uniqueFileNames = [...new Set(fileNames)];
+      const dirNames = directories.map((d) => basename(d.path));
+      const uniqueDirNames = [...new Set(dirNames)];
+
+      const bfgArgs = this.buildBFGCommand(uniqueFileNames, uniqueDirNames);
+
+      if (bfgArgs) {
         this.logger.info("\n[DRY RUN] Commands that would be executed:");
-
-        const fileNames = files.map((f) => basename(f.path));
-        const uniqueFileNames = [...new Set(fileNames)];
-        const dirNames = directories.map((d) => basename(d.path));
-        const uniqueDirNames = [...new Set(dirNames)];
-
-        this.logger.info(
-          `  java -jar ${this.bfgPath || "<bfg-path>"} --delete-files {${
-            uniqueFileNames.join(",")
-          }} --delete-folders {${
-            uniqueDirNames.join(",")
-          }} --no-blob-protection ${this.options.repoPath}`,
-        );
+        this.logger.info(`  ${bfgArgs.join(" ")}`);
         this.logger.info(`  git reflog expire --expire=now --all`);
         this.logger.info(`  git gc --prune=now --aggressive`);
       }
@@ -837,23 +881,25 @@ export class FileCleaner {
       const uniqueDirNames = [...new Set(dirNames)];
 
       // Build BFG command with batched patterns
-      const bfgArgs = ["java", "-jar", this.bfgPath];
+      const bfgArgs = this.buildBFGCommand(uniqueFileNames, uniqueDirNames);
 
+      if (!bfgArgs) {
+        this.logger.info("No files or directories to remove");
+        return;
+      }
+
+      // Log what we're batching
       if (uniqueFileNames.length > 0) {
         this.logger.verbose(
           `Batching ${uniqueFileNames.length} file patterns: ${uniqueFileNames.join(", ")}`,
         );
-        bfgArgs.push("--delete-files", `{${uniqueFileNames.join(",")}}`);
       }
 
       if (uniqueDirNames.length > 0) {
         this.logger.verbose(
           `Batching ${uniqueDirNames.length} directory patterns: ${uniqueDirNames.join(", ")}`,
         );
-        bfgArgs.push("--delete-folders", `{${uniqueDirNames.join(",")}}`);
       }
-
-      bfgArgs.push("--no-blob-protection", this.options.repoPath);
 
       // Execute single BFG pass
       const bfgCmd = bfgArgs.join(" ");
