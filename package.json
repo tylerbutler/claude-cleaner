@@ -1,6 +1,9 @@
 {
   "name": "@tylerbu/claude-cleaner",
   "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "devDependencies": {
     "semantic-release": "^24.0.0",
     "@semantic-release/changelog": "^6.0.3",

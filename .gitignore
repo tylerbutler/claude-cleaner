@@ -30,6 +30,7 @@ backup-*/
 
 # npm dependencies (for semantic-release)
 node_modules/
+# NOTE: package-lock.json is intentionally committed for reproducible builds and security auditing
 
 # Build artifacts
 dist/

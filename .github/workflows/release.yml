@@ -13,6 +13,10 @@ permissions:
   contents: write
   id-token: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Release
@@ -92,6 +96,12 @@ jobs:
           done
 
           echo "All binaries built successfully"
+
+          # Smoke test: verify Linux binary is executable and shows version
+          echo ""
+          echo "Running smoke test on Linux x64 binary..."
+          chmod +x dist/claude-cleaner-linux-x64
+          ./dist/claude-cleaner-linux-x64 --version
 
       - name: Run semantic-release (dry-run)
         if: ${{ inputs.dry-run }}
