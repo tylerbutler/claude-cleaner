@@ -54,16 +54,10 @@ export class DependencyManager {
 
     // Skip installation on Windows - user must install mise manually
     if (systemInfo.platform === "win32") {
-      this.logger.warn(
-        "mise is not installed. On Windows, automatic installation is not supported.",
+      throw new AppError(
+        "mise is not installed. On Windows, automatic installation is not supported. Please install mise manually from https://mise.jdx.dev/installing-mise.html or install dependencies directly: Java 17+, sd (https://github.com/chmln/sd)",
+        "MISE_NOT_FOUND",
       );
-      this.logger.warn(
-        "Please install mise manually from https://mise.jdx.dev/installing-mise.html",
-      );
-      this.logger.warn(
-        "Or install dependencies directly: Java 17+, sd (https://github.com/chmln/sd)",
-      );
-      return;
     }
 
     this.logger.info("Installing mise...");
