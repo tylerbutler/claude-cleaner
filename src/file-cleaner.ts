@@ -795,30 +795,18 @@ export class FileCleaner {
       if (files.length > 0 || directories.length > 0) {
         this.logger.info("\n[DRY RUN] Commands that would be executed:");
 
-        if (files.length > 0) {
-          const fileNames = files.map((f) => basename(f.path));
-          const uniqueFileNames = [...new Set(fileNames)];
-          for (const fileName of uniqueFileNames) {
-            this.logger.info(
-              `  java -jar ${
-                this.bfgPath || "<bfg-path>"
-              } --delete-files ${fileName} --no-blob-protection ${this.options.repoPath}`,
-            );
-          }
-        }
+        const fileNames = files.map((f) => basename(f.path));
+        const uniqueFileNames = [...new Set(fileNames)];
+        const dirNames = directories.map((d) => basename(d.path));
+        const uniqueDirNames = [...new Set(dirNames)];
 
-        if (directories.length > 0) {
-          const dirNames = directories.map((d) => basename(d.path));
-          const uniqueDirNames = [...new Set(dirNames)];
-          for (const dirName of uniqueDirNames) {
-            this.logger.info(
-              `  java -jar ${
-                this.bfgPath || "<bfg-path>"
-              } --delete-folders ${dirName} --no-blob-protection ${this.options.repoPath}`,
-            );
-          }
-        }
-
+        this.logger.info(
+          `  java -jar ${this.bfgPath || "<bfg-path>"} --delete-files {${
+            uniqueFileNames.join(",")
+          }} --delete-folders {${
+            uniqueDirNames.join(",")
+          }} --no-blob-protection ${this.options.repoPath}`,
+        );
         this.logger.info(`  git reflog expire --expire=now --all`);
         this.logger.info(`  git gc --prune=now --aggressive`);
       }
@@ -839,40 +827,42 @@ export class FileCleaner {
       const files = claudeFiles.filter((f) => f.type === "file");
       const directories = claudeFiles.filter((f) => f.type === "directory");
 
-      // Process files
-      if (files.length > 0) {
-        // Extract just the filename from files (BFG requirement)
-        // Note: basename matching means all files with the same name across different
-        // directories will be removed (e.g., both src/CLAUDE.md and docs/CLAUDE.md).
-        // This is the intended behavior - the tool removes all instances of these patterns.
-        const fileNames = files.map((f) => basename(f.path));
-        const uniqueFileNames = [...new Set(fileNames)]; // Remove duplicates
+      // Extract unique basenames (BFG requirement)
+      // Note: basename matching means all files/dirs with the same name across different
+      // paths will be removed (e.g., both src/CLAUDE.md and docs/CLAUDE.md).
+      // This is the intended behavior - the tool removes all instances of these patterns.
+      const fileNames = files.map((f) => basename(f.path));
+      const uniqueFileNames = [...new Set(fileNames)];
+      const dirNames = directories.map((d) => basename(d.path));
+      const uniqueDirNames = [...new Set(dirNames)];
 
-        for (const fileName of uniqueFileNames) {
-          this.logger.verbose(`Removing files named: ${fileName}`);
-          const bfgCmd =
-            `java -jar ${this.bfgPath} --delete-files ${fileName} --no-blob-protection ${this.options.repoPath}`;
-          this.logger.info(`Running: ${bfgCmd}`);
-          await $`java -jar ${this.bfgPath} --delete-files ${fileName} --no-blob-protection ${this.options.repoPath}`;
-        }
+      // Build BFG command with batched patterns
+      const bfgArgs = ["java", "-jar", this.bfgPath];
+
+      if (uniqueFileNames.length > 0) {
+        this.logger.verbose(
+          `Batching ${uniqueFileNames.length} file patterns: ${
+            uniqueFileNames.join(", ")
+          }`,
+        );
+        bfgArgs.push("--delete-files", `{${uniqueFileNames.join(",")}}`);
       }
 
-      // Process directories
-      if (directories.length > 0) {
-        // Note: basename matching means all directories with the same name across different
-        // paths will be removed (e.g., both src/.claude/ and docs/.claude/).
-        // This is the intended behavior - the tool removes all instances of these patterns.
-        const dirNames = directories.map((d) => basename(d.path));
-        const uniqueDirNames = [...new Set(dirNames)]; // Remove duplicates
-
-        for (const dirName of uniqueDirNames) {
-          this.logger.verbose(`Removing directories named: ${dirName}`);
-          const bfgCmd =
-            `java -jar ${this.bfgPath} --delete-folders ${dirName} --no-blob-protection ${this.options.repoPath}`;
-          this.logger.info(`Running: ${bfgCmd}`);
-          await $`java -jar ${this.bfgPath} --delete-folders ${dirName} --no-blob-protection ${this.options.repoPath}`;
-        }
+      if (uniqueDirNames.length > 0) {
+        this.logger.verbose(
+          `Batching ${uniqueDirNames.length} directory patterns: ${
+            uniqueDirNames.join(", ")
+          }`,
+        );
+        bfgArgs.push("--delete-folders", `{${uniqueDirNames.join(",")}}`);
       }
+
+      bfgArgs.push("--no-blob-protection", this.options.repoPath);
+
+      // Execute single BFG pass
+      const bfgCmd = bfgArgs.join(" ");
+      this.logger.info(`Running: ${bfgCmd}`);
+      await new CommandBuilder().command(bfgArgs);
 
       // Clean up the repository
       this.logger.verbose("Cleaning up Git repository...");
