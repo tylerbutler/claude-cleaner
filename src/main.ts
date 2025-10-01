@@ -487,16 +487,16 @@ async function main() {
         "Execute changes (default: dry-run mode shows what would be changed)",
       )
       .option("-v, --verbose", "Enable verbose output")
-      .option("--auto-install", "Automatically install required dependencies")
+      .option("-a, --auto-install", "Automatically install required dependencies")
       .option(
-        "--files-only",
+        "-f, --files-only",
         "Only scan and remove Claude files (skip commit message cleaning)",
       )
       .option(
-        "--commits-only",
+        "-c, --commits-only",
         "Clean only commit messages (skip file removal)",
       )
-      .option("--branch <branch>", "Specify branch to clean (defaults to HEAD)")
+      .option("-b, --branch <branch>", "Specify branch to clean (defaults to HEAD)")
       .option(
         "--include-dirs <name:string>",
         "Add directory names to remove (matches any directory with this name anywhere in repository)",
@@ -511,7 +511,7 @@ async function main() {
         "Skip default Claude patterns (.claude/, CLAUDE.md, etc.)",
       )
       .option(
-        "--include-all-common-patterns",
+        "-A, --include-all-common-patterns",
         "Include ALL known common Claude patterns (even rarely used ones) - use for complete cleanup",
       )
       .option(
