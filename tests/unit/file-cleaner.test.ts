@@ -156,7 +156,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
       logger,
     );
 
-    // Access private method via type assertion for testing
+    // deno-lint-ignore no-explicit-any
     const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
 
     try {
@@ -184,6 +184,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
       logger,
     );
 
+    // deno-lint-ignore no-explicit-any
     const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
 
     try {
@@ -210,6 +211,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
       logger,
     );
 
+    // deno-lint-ignore no-explicit-any
     const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
 
     try {
@@ -236,6 +238,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
       logger,
     );
 
+    // deno-lint-ignore no-explicit-any
     const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
 
     // Should not throw for valid filenames
@@ -257,6 +260,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
       logger,
     );
 
+    // deno-lint-ignore no-explicit-any
     const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
 
     // Spaces are allowed (though may have limitations with batching)
@@ -278,6 +282,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
       logger,
     );
 
+    // deno-lint-ignore no-explicit-any
     const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
 
     try {
