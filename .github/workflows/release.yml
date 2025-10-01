@@ -62,14 +62,35 @@ jobs:
             target="${target_pair%%:*}"
             name="${target_pair##*:}"
             echo "Building claude-cleaner-$name for $target..."
-            deno compile --allow-all --target "$target" --output "dist/claude-cleaner-$name" src/main.ts
+            if ! deno compile --allow-all --target "$target" --output "dist/claude-cleaner-$name" src/main.ts; then
+              echo "Error: Failed to build for $target"
+              exit 1
+            fi
           done
 
       - name: Verify binaries
         run: |
           echo "Verifying built binaries..."
           ls -lh dist/
-          file dist/claude-cleaner-linux-x64
+
+          binaries=(
+            "claude-cleaner-linux-x64"
+            "claude-cleaner-linux-arm64"
+            "claude-cleaner-macos-x64"
+            "claude-cleaner-macos-arm64"
+            "claude-cleaner-windows-x64.exe"
+          )
+
+          for binary in "${binaries[@]}"; do
+            if [ -f "dist/$binary" ]; then
+              echo "✓ $binary exists"
+              file "dist/$binary"
+            else
+              echo "✗ $binary missing"
+              exit 1
+            fi
+          done
+
           echo "All binaries built successfully"
 
       - name: Run semantic-release (dry-run)
