@@ -33,6 +33,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-deno-
 
+      - name: Setup mise (Windows only)
+        if: runner.os == 'Windows'
+        uses: jdx/mise-action@v2
+        with:
+          version: latest
+
       - name: Run tests
         run: deno task test
 
