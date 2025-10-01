@@ -22,6 +22,7 @@ export interface DependencyCheckResult {
 export class DependencyManager {
   private readonly cacheDir: string;
   private readonly bfgJarPath: string;
+  private misePath: string | undefined;
 
   constructor(
     private readonly logger: Logger,
@@ -34,20 +35,12 @@ export class DependencyManager {
   }
 
   async ensureMiseInstalled(): Promise<void> {
-    // Check if mise is already installed
-    try {
-      const result = await $`mise --version`
-        .stdout("piped")
-        .stderr("piped")
-        .noThrow();
-      if (result.code === 0) {
-        this.logger.verbose(
-          `mise is already installed: ${result.stdout.trim()}`,
-        );
-        return;
-      }
-    } catch {
-      // mise not found, continue with installation
+    // Check if mise is already installed and get its path
+    const existingPath = await this.findExecutablePath("mise");
+    if (existingPath) {
+      this.misePath = existingPath;
+      this.logger.verbose(`mise is already installed at: ${existingPath}`);
+      return;
     }
 
     const systemInfo = getSystemInfo();
@@ -72,10 +65,13 @@ export class DependencyManager {
         );
       }
 
+      // Set mise path to standard installation location
+      this.misePath = join(systemInfo.homeDir || "/tmp", ".local", "bin", "mise");
+
       // Add mise to PATH for this session
-      const misePath = join(systemInfo.homeDir || "/tmp", ".local", "bin");
+      const miseDir = join(systemInfo.homeDir || "/tmp", ".local", "bin");
       const currentPath = Deno.env.get("PATH") || "";
-      Deno.env.set("PATH", `${misePath}:${currentPath}`);
+      Deno.env.set("PATH", `${miseDir}:${currentPath}`);
 
       this.logger.info("mise installed successfully");
     } else {
@@ -90,8 +86,10 @@ export class DependencyManager {
     this.logger.info("Installing Java via mise...");
 
     try {
+      const miseCmd = this.misePath || "mise";
+
       // Install Java 17 (LTS version that works well with BFG)
-      const installResult = await $`mise install java@17`
+      const installResult = await $`${miseCmd} install java@17`
         .stdout("piped")
         .stderr("piped")
         .noThrow();
@@ -104,7 +102,7 @@ export class DependencyManager {
       }
 
       // Use Java globally
-      const useResult = await $`mise use -g java@17`
+      const useResult = await $`${miseCmd} use -g java@17`
         .stdout("piped")
         .stderr("piped")
         .noThrow();
@@ -133,7 +131,9 @@ export class DependencyManager {
     this.logger.info("Installing sd via mise...");
 
     try {
-      const installResult = await $`mise install sd`
+      const miseCmd = this.misePath || "mise";
+
+      const installResult = await $`${miseCmd} install sd`
         .stdout("piped")
         .stderr("piped")
         .noThrow();
@@ -145,7 +145,7 @@ export class DependencyManager {
         );
       }
 
-      const useResult = await $`mise use -g sd`
+      const useResult = await $`${miseCmd} use -g sd`
         .stdout("piped")
         .stderr("piped")
         .noThrow();
@@ -218,10 +218,12 @@ export class DependencyManager {
 
   async checkDependency(tool: string): Promise<DependencyCheckResult> {
     try {
+      const miseCmd = this.misePath || "mise";
+
       switch (tool) {
         case "java": {
           // Try mise exec first (for tools installed via mise)
-          let result = await $`mise exec -- java -version`
+          let result = await $`${miseCmd} exec -- java -version`
             .stdout("piped")
             .stderr("piped")
             .noThrow();
@@ -249,7 +251,7 @@ export class DependencyManager {
 
         case "sd": {
           // Try mise exec first (for tools installed via mise)
-          let result = await $`mise exec -- sd --version`
+          let result = await $`${miseCmd} exec -- sd --version`
             .stdout("piped")
             .stderr("piped")
             .noThrow();
@@ -287,7 +289,7 @@ export class DependencyManager {
         }
 
         case "mise": {
-          const result = await $`mise --version`
+          const result = await $`${miseCmd} --version`
             .stdout("piped")
             .stderr("piped")
             .noThrow();
@@ -347,7 +349,8 @@ export class DependencyManager {
 
   private async reshimMise(): Promise<void> {
     try {
-      const result = await $`mise reshim`
+      const miseCmd = this.misePath || "mise";
+      const result = await $`${miseCmd} reshim`
         .stdout("piped")
         .stderr("piped")
         .noThrow();
