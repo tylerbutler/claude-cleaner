@@ -11,19 +11,23 @@ All notable changes to this project will be documented in this file.
 ### [v0.2.0](https://github.com/tylerbutler/claude-cleaner/compare/v0.1.0...v0.2.0) (2025-09-30)
 
 **Breaking Changes:**
+
 - CLI now requires repository path as a positional argument instead of `--path` flag
 
 **Features:**
+
 - Implemented semantic-release for automated versioning and releases
 - Added comprehensive release workflow with multi-platform binary builds
 - Added GitHub Actions workflow for CI/CD
 
 **Documentation:**
+
 - Moved release process documentation to DEV.md
 - Added JSR installation information
 - Created initial CHANGELOG.md with auto-changelog format
 
 **Internal:**
+
 - Version bump to 0.2.0
 
 ### [v0.1.0](https://github.com/tylerbutler/claude-cleaner/releases/tag/v0.1.0) (2025-09-30)
@@ -33,6 +37,7 @@ All notable changes to this project will be documented in this file.
 Claude Cleaner is a tool that removes Claude artifacts (files and commit trailers) from Git repositories.
 
 **Features:**
+
 - File removal using BFG Repo-Cleaner for efficient Git history cleaning
 - Commit trailer removal using git filter-branch with sd
 - Pattern-based detection for Claude files (CLAUDE.md, .claude/, claudedocs/, etc.)
@@ -44,11 +49,13 @@ Claude Cleaner is a tool that removes Claude artifacts (files and commit trailer
 - Cross-platform support (Linux, macOS, Windows)
 
 **Documentation:**
+
 - Comprehensive README with usage examples
 - Development guide with testing information
 - Pattern documentation for file matching
 
 **CI/CD:**
+
 - GitHub Actions workflows for continuous integration
 - Automated release process with binary compilation
 - JSR package publishing support

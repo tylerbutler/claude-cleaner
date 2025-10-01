@@ -216,6 +216,7 @@ All commits and **PR titles** must follow the [Conventional Commits specificatio
 **Format:** `type(optional-scope): description`
 
 **Learn More:**
+
 - [Conventional Commits Specification](https://www.conventionalcommits.org/)
 - [Semantic Release: Commit Message Format](https://semantic-release.gitbook.io/semantic-release/#commit-message-format)
 - [Angular Commit Guidelines](https://github.com/angular/angular/blob/main/CONTRIBUTING.md#commit) (basis for conventional commits)
