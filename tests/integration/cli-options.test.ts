@@ -395,3 +395,29 @@ Deno.test("CLI Options - Integration with Existing Flags", async (t) => {
     await Deno.remove(tempDir, { recursive: true });
   });
 });
+
+Deno.test("CLI Options - Repository Path Requirement", async (t) => {
+  await t.step("should require repository path argument", async () => {
+    const result = await runCLI(["--files-only"]);
+
+    assert(!result.success);
+    assert(result.stderr.includes("REPO_PATH_REQUIRED"));
+    assert(
+      result.stderr.includes("Repository path is required"),
+    );
+  });
+
+  await t.step("should fail with helpful error when no args provided", async () => {
+    const result = await runCLI([]);
+
+    assert(!result.success);
+    assert(result.stderr.includes("REPO_PATH_REQUIRED"));
+  });
+
+  await t.step("should fail when only flags provided, no path", async () => {
+    const result = await runCLI(["--verbose", "--files-only"]);
+
+    assert(!result.success);
+    assert(result.stderr.includes("REPO_PATH_REQUIRED"));
+  });
+});
