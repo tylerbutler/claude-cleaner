@@ -35,6 +35,7 @@ jobs:
         uses: anthropics/claude-code-action@90d189f3abd48655ec3e2c67c552cc23e92d6028 # ratchet:anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          use_sticky_comment: true
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
