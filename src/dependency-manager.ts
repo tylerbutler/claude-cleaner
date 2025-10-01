@@ -371,12 +371,20 @@ export class DependencyManager {
     command: string,
   ): Promise<string | undefined> {
     try {
-      const result = await $`which ${command}`
+      const systemInfo = getSystemInfo();
+      const isWindows = systemInfo.platform === "win32";
+
+      // Use 'where' on Windows, 'which' on Unix-like systems
+      const findCommand = isWindows ? "where" : "which";
+      const result = await $`${findCommand} ${command}`
         .stdout("piped")
         .stderr("piped")
         .noThrow();
+
       if (result.code === 0) {
-        return result.stdout.trim();
+        // 'where' on Windows can return multiple paths, take the first one
+        const output = result.stdout.trim();
+        return isWindows ? output.split('\n')[0]?.trim() : output;
       }
     } catch {
       // Ignore errors
