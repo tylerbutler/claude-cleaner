@@ -132,14 +132,20 @@ export class DependencyManager {
 
     try {
       const miseCmd = this.misePath || "mise";
+      this.logger.verbose(`Using mise command: ${miseCmd}`);
 
       const installResult = await $`${miseCmd} install sd`
         .stdout("piped")
         .stderr("piped")
         .noThrow();
+
+      this.logger.verbose(
+        `mise install sd result: code=${installResult.code}, stdout=${installResult.stdout}, stderr=${installResult.stderr}`,
+      );
+
       if (installResult.code !== 0) {
         throw new AppError(
-          "Failed to install sd via mise",
+          `Failed to install sd via mise: ${installResult.stderr}`,
           "SD_INSTALL_FAILED",
           new Error(installResult.stderr),
         );
@@ -149,9 +155,14 @@ export class DependencyManager {
         .stdout("piped")
         .stderr("piped")
         .noThrow();
+
+      this.logger.verbose(
+        `mise use -g sd result: code=${useResult.code}, stderr=${useResult.stderr}`,
+      );
+
       if (useResult.code !== 0) {
         throw new AppError(
-          "Failed to configure sd globally",
+          `Failed to configure sd globally: ${useResult.stderr}`,
           "SD_CONFIG_FAILED",
           new Error(useResult.stderr),
         );
