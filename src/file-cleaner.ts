@@ -769,20 +769,30 @@ export class FileCleaner {
    * Validates that filenames don't contain characters that would break BFG glob syntax.
    *
    * BFG uses bash-style glob patterns where {pattern1,pattern2} is used for alternation.
-   * The characters ',' separates patterns, and '{' '}' delimit the pattern list.
-   * If any filename contains these characters, the glob syntax becomes ambiguous or invalid.
+   * The characters ',' separates patterns, '{' '}' delimit the pattern list, and other
+   * special characters (* ? [ ] etc.) have glob semantics. Spaces require special handling
+   * when batching multiple patterns.
    *
    * @param fileNames Array of filenames to validate
+   * @param allowSpaces If true, allow spaces (only safe for single patterns without braces)
    * @throws {AppError} with code INVALID_FILENAME if any filename contains invalid characters
    */
-  private validateFilenamesForBFG(fileNames: string[]): void {
-    const invalidChars = [",", "{", "}"];
+  private validateFilenamesForBFG(fileNames: string[], allowSpaces = false): void {
+    // Characters that break BFG glob syntax
+    const invalidChars = [",", "{", "}", "*", "?", "[", "]", ";", "|", "&", '"', "'"];
+    if (!allowSpaces) {
+      invalidChars.push(" ");
+    }
+
     for (const fileName of fileNames) {
       for (const char of invalidChars) {
         if (fileName.includes(char)) {
+          const suggestion = char === " "
+            ? "Process this file separately or rename it without spaces."
+            : "Remove this file manually using git commands.";
           throw new AppError(
             `Cannot batch BFG operations: filename '${fileName}' contains special character '${char}' ` +
-              `that would break BFG glob syntax. Remove this file manually or contact support.`,
+              `that would break BFG glob syntax. ${suggestion}`,
             "INVALID_FILENAME",
           );
         }
@@ -796,9 +806,8 @@ export class FileCleaner {
    * Batches multiple patterns into a single BFG invocation using glob syntax.
    * Example: --delete-files {pattern1,pattern2,pattern3}
    *
-   * Note: BFG glob patterns do not support spaces in filenames within the pattern.
-   * Filenames with spaces will work if there's only one pattern (no braces needed),
-   * but will fail when batched with other patterns.
+   * For single patterns, uses direct pattern syntax without braces to support spaces.
+   * For multiple patterns, uses brace syntax but validates against spaces.
    *
    * @param uniqueFileNames Array of unique file basenames to delete
    * @param uniqueDirNames Array of unique directory basenames to delete
@@ -812,18 +821,36 @@ export class FileCleaner {
       return null;
     }
 
-    // Validate filenames don't contain characters that break BFG glob syntax
-    this.validateFilenamesForBFG(uniqueFileNames);
-    this.validateFilenamesForBFG(uniqueDirNames);
-
     const bfgArgs = ["java", "-jar", this.bfgPath || "<bfg-path>"];
 
+    // Handle file patterns
     if (uniqueFileNames.length > 0) {
-      bfgArgs.push("--delete-files", `{${uniqueFileNames.join(",")}}`);
+      if (uniqueFileNames.length === 1) {
+        // Single pattern: allow spaces, no braces needed
+        // Length check above ensures [0] exists
+        const fileName = uniqueFileNames[0]!;
+        this.validateFilenamesForBFG([fileName], true);
+        bfgArgs.push("--delete-files", fileName);
+      } else {
+        // Multiple patterns: batch with braces, disallow spaces
+        this.validateFilenamesForBFG(uniqueFileNames, false);
+        bfgArgs.push("--delete-files", `{${uniqueFileNames.join(",")}}`);
+      }
     }
 
+    // Handle directory patterns
     if (uniqueDirNames.length > 0) {
-      bfgArgs.push("--delete-folders", `{${uniqueDirNames.join(",")}}`);
+      if (uniqueDirNames.length === 1) {
+        // Single pattern: allow spaces, no braces needed
+        // Length check above ensures [0] exists
+        const dirName = uniqueDirNames[0]!;
+        this.validateFilenamesForBFG([dirName], true);
+        bfgArgs.push("--delete-folders", dirName);
+      } else {
+        // Multiple patterns: batch with braces, disallow spaces
+        this.validateFilenamesForBFG(uniqueDirNames, false);
+        bfgArgs.push("--delete-folders", `{${uniqueDirNames.join(",")}}`);
+      }
     }
 
     bfgArgs.push("--no-blob-protection", this.options.repoPath);

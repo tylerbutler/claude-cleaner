@@ -2,11 +2,12 @@
  * Unit tests for file cleaner module
  */
 
-import { assert } from "@std/assert";
+import { assert, assertThrows } from "@std/assert";
 import { exists } from "@std/fs";
 import { join } from "@std/path";
 import { createCleanRepo, createRepoWithClaudeFiles } from "../utils/fixtures.ts";
 import { assertValidGitRepo, getRepoFiles } from "../utils/test-helpers.ts";
+import { AppError } from "../../src/utils.ts";
 
 // These tests will be implemented when file-cleaner.ts is available
 // For now, they serve as specifications for the expected behavior
@@ -245,7 +246,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
     validateFn(["CLAUDE.md", ".claude", "file.txt", "my-file_name.log"]);
   });
 
-  await t.step("should accept filenames with spaces", () => {
+  await t.step("should accept filenames with spaces when allowSpaces is true", () => {
     const logger = new ConsoleLogger(false);
     const cleaner = new FileCleaner(
       {
@@ -263,8 +264,81 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
     // deno-lint-ignore no-explicit-any
     const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
 
-    // Spaces are allowed (though may have limitations with batching)
-    validateFn(["my file.txt", "another file.log"]);
+    // Spaces are allowed when allowSpaces parameter is true (single file mode)
+    validateFn(["my file.txt"], true);
+  });
+
+  await t.step("should reject filenames with spaces when allowSpaces is false", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    // deno-lint-ignore no-explicit-any
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    // Spaces are rejected when batching multiple files (allowSpaces defaults to false)
+    assertThrows(
+      () => validateFn(["my file.txt", "another file.log"]),
+      AppError,
+      "special character ' '",
+    );
+  });
+
+  await t.step("should reject wildcard characters", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    // deno-lint-ignore no-explicit-any
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    // Wildcard characters should be rejected
+    assertThrows(() => validateFn(["file*.txt"]), AppError, "special character '*'");
+    assertThrows(() => validateFn(["file?.txt"]), AppError, "special character '?'");
+  });
+
+  await t.step("should reject shell metacharacters", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    // deno-lint-ignore no-explicit-any
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    // Shell metacharacters should be rejected
+    assertThrows(() => validateFn(["file;cmd.txt"]), AppError, "special character ';'");
+    assertThrows(() => validateFn(["file|cmd.txt"]), AppError, "special character '|'");
+    assertThrows(() => validateFn(["file&cmd.txt"]), AppError, "special character '&'");
   });
 
   await t.step("should provide actionable error messages", () => {
@@ -295,7 +369,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
         "Should mention batching limitation",
       );
       assert(
-        error.message.includes("Remove this file manually"),
+        error.message.includes("Remove this file manually using git commands"),
         "Should provide actionable guidance",
       );
     }
