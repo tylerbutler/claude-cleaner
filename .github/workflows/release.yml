@@ -34,6 +34,16 @@ jobs:
         with:
           deno-version: v2.x
 
+      - name: Cache Deno dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/deno
+            ~/.deno
+          key: ${{ runner.os }}-deno-${{ hashFiles('deno.json', 'deno.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-deno-
+
       - name: Validate code
         run: |
           deno fmt --check
