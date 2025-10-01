@@ -8,8 +8,8 @@
 
 import {
   displaySelectionSummary,
-  selectFilesToClean,
   type FileEntry,
+  selectFilesToClean,
 } from "../src/interactive-selector.ts";
 import { ConsoleLogger } from "../src/utils.ts";
 

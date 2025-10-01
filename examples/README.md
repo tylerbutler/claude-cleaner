@@ -25,6 +25,7 @@ claude-cleaner --interactive /path/to/repo
 ```
 
 This will:
+
 1. Scan for Claude artifacts
 2. Display them in a tree view
 3. Let you select which ones to remove

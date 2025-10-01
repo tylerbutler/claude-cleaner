@@ -4,8 +4,8 @@ import { DependencyManager } from "./dependency-manager.ts";
 import { FileCleaner } from "./file-cleaner.ts";
 import {
   displaySelectionSummary,
-  selectFilesToClean,
   type FileEntry,
+  selectFilesToClean,
 } from "./interactive-selector.ts";
 import {
   AppError,
@@ -178,9 +178,7 @@ async function cleanAction(
           }
 
           // Filter to only selected files
-          const selectedFiles = claudeFiles.filter((f) =>
-            selectedPaths.includes(f.path)
-          );
+          const selectedFiles = claudeFiles.filter((f) => selectedPaths.includes(f.path));
 
           displaySelectionSummary(selectedPaths, claudeFiles, logger);
 
@@ -270,9 +268,7 @@ async function cleanAction(
             if (selectedPaths.length === 0) {
               logger.info("\nNo files selected for removal.");
             } else {
-              const selectedFiles = claudeFiles.filter((f) =>
-                selectedPaths.includes(f.path)
-              );
+              const selectedFiles = claudeFiles.filter((f) => selectedPaths.includes(f.path));
 
               displaySelectionSummary(selectedPaths, claudeFiles, logger);
 

@@ -166,7 +166,9 @@ export function displaySelectionSummary(
     logger.info(`  ${icon} ${file.path}`);
     if (file.earliestCommit) {
       logger.info(
-        `    ↳ First appeared: ${file.earliestCommit.hash.substring(0, 7)} (${file.earliestCommit.date})`,
+        `    ↳ First appeared: ${
+          file.earliestCommit.hash.substring(0, 7)
+        } (${file.earliestCommit.date})`,
       );
     }
   }
