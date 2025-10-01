@@ -10,7 +10,12 @@ export interface Logger {
 }
 
 export class ConsoleLogger implements Logger {
-  constructor(private verboseMode = false) {}
+  constructor(private verboseMode = false) {
+    // Check VERBOSE environment variable for CI debugging
+    if (Deno.env.get("VERBOSE") === "true") {
+      this.verboseMode = true;
+    }
+  }
 
   info(message: string): void {
     console.log(message);

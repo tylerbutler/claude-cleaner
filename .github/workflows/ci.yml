@@ -41,6 +41,7 @@ jobs:
         run: deno task test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERBOSE: "true"
 
   quality:
     name: Code Quality
