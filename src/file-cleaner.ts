@@ -767,7 +767,13 @@ export class FileCleaner {
 
   /**
    * Validates that filenames don't contain characters that would break BFG glob syntax.
-   * Throws an error if invalid characters are found.
+   *
+   * BFG uses bash-style glob patterns where {pattern1,pattern2} is used for alternation.
+   * The characters ',' separates patterns, and '{' '}' delimit the pattern list.
+   * If any filename contains these characters, the glob syntax becomes ambiguous or invalid.
+   *
+   * @param fileNames Array of filenames to validate
+   * @throws {AppError} with code INVALID_FILENAME if any filename contains invalid characters
    */
   private validateFilenamesForBFG(fileNames: string[]): void {
     const invalidChars = [",", "{", "}"];
@@ -775,7 +781,8 @@ export class FileCleaner {
       for (const char of invalidChars) {
         if (fileName.includes(char)) {
           throw new AppError(
-            `Invalid filename '${fileName}': contains special character '${char}' that would break BFG glob syntax`,
+            `Cannot batch BFG operations: filename '${fileName}' contains special character '${char}' ` +
+              `that would break BFG glob syntax. Remove this file manually or contact support.`,
             "INVALID_FILENAME",
           );
         }
@@ -785,7 +792,17 @@ export class FileCleaner {
 
   /**
    * Build BFG command arguments from file and directory lists.
-   * Returns null if no files or directories to process.
+   *
+   * Batches multiple patterns into a single BFG invocation using glob syntax.
+   * Example: --delete-files {pattern1,pattern2,pattern3}
+   *
+   * Note: BFG glob patterns do not support spaces in filenames within the pattern.
+   * Filenames with spaces will work if there's only one pattern (no braces needed),
+   * but will fail when batched with other patterns.
+   *
+   * @param uniqueFileNames Array of unique file basenames to delete
+   * @param uniqueDirNames Array of unique directory basenames to delete
+   * @returns Command arguments array, or null if no files/directories to process
    */
   private buildBFGCommand(
     uniqueFileNames: string[],
@@ -904,7 +921,10 @@ export class FileCleaner {
       // Execute single BFG pass
       const bfgCmd = bfgArgs.join(" ");
       this.logger.info(`Running: ${bfgCmd}`);
-      await new CommandBuilder().command(bfgArgs);
+      const builder = new CommandBuilder()
+        .command(bfgArgs)
+        .cwd(this.options.repoPath);
+      await builder;
 
       // Clean up the repository
       this.logger.verbose("Cleaning up Git repository...");

@@ -136,3 +136,163 @@ Deno.test("File Cleaner - Dry Run Mode", async (t) => {
     }
   });
 });
+
+Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
+  const { FileCleaner } = await import("../../src/file-cleaner.ts");
+  const { ConsoleLogger } = await import("../../src/utils.ts");
+
+  await t.step("should reject filenames with commas", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    // Access private method via type assertion for testing
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    try {
+      validateFn(["file,with,comma.txt"]);
+      assert(false, "Should have thrown error for comma in filename");
+    } catch (error) {
+      assert(error instanceof Error);
+      assert(error.message.includes("special character ','"));
+      assert(error.message.includes("file,with,comma.txt"));
+    }
+  });
+
+  await t.step("should reject filenames with opening brace", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    try {
+      validateFn(["file{1}.txt"]);
+      assert(false, "Should have thrown error for opening brace in filename");
+    } catch (error) {
+      assert(error instanceof Error);
+      assert(error.message.includes("special character '{'"));
+    }
+  });
+
+  await t.step("should reject filenames with closing brace", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    try {
+      validateFn(["file}1.txt"]);
+      assert(false, "Should have thrown error for closing brace in filename");
+    } catch (error) {
+      assert(error instanceof Error);
+      assert(error.message.includes("special character '}'"));
+    }
+  });
+
+  await t.step("should accept valid filenames", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    // Should not throw for valid filenames
+    validateFn(["CLAUDE.md", ".claude", "file.txt", "my-file_name.log"]);
+  });
+
+  await t.step("should accept filenames with spaces", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    // Spaces are allowed (though may have limitations with batching)
+    validateFn(["my file.txt", "another file.log"]);
+  });
+
+  await t.step("should provide actionable error messages", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    try {
+      validateFn(["bad,file.txt"]);
+      assert(false, "Should have thrown error");
+    } catch (error) {
+      assert(error instanceof Error);
+      assert(
+        error.message.includes("Cannot batch BFG operations"),
+        "Should mention batching limitation",
+      );
+      assert(
+        error.message.includes("Remove this file manually"),
+        "Should provide actionable guidance",
+      );
+    }
+  });
+});
