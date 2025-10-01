@@ -11,7 +11,7 @@ interface PatternConfig {
 
 // Claude file patterns using hybrid approach (glob for readability, regex for flexibility)
 const EXTENDED_CLAUDE_PATTERNS: PatternConfig[] = [
-  // Configuration files - use regex for flexible separator matching
+  // Configuration files - regex for proper word boundary
   {
     pattern: /^\.?claude[-_.].*\.(json|yaml|yml|toml|ini|config)$/i,
     type: "regex",
@@ -28,103 +28,83 @@ const EXTENDED_CLAUDE_PATTERNS: PatternConfig[] = [
     reason: "Claude workspace/settings file",
   },
 
-  // Session and state files - use regex for flexible matching
+  // Session and state files - regex for flexibility with dot separator
   {
-    pattern: /^\.?claude[-_]?(session|state|cache|history).*$/i,
-    type: "regex",
-    reason: "Claude session/state file",
-  },
-  {
-    pattern: /^\.?claude[-_.](session|state|cache|history)$/i,
+    pattern: /^\.?claude[-_.]?(session|state|cache|history).*$/i,
     type: "regex",
     reason: "Claude session/state file",
   },
 
-  // Backup files - use regex for flexibility
+  // Backup files - extended glob
   {
-    pattern: /^\.?claude[-_.].*\.(bak|backup|old|orig|save)$/i,
-    type: "regex",
-    reason: "Claude backup file",
-  },
-  {
-    pattern: /^\.?claude\.(bak|backup|old|orig|save)$/i,
-    type: "regex",
+    pattern: "?(.)claude?(-|_|.)*.@(bak|backup|old|orig|save)",
+    type: "glob",
     reason: "Claude backup file",
   },
 
-  // Temporary and working files - use regex for complex patterns
+  // Temporary and working files - regex for flexibility with dot separator
   {
-    pattern: /^\.?claude[-_]?(temp|tmp|work|scratch|draft).*$/i,
+    pattern: /^\.?claude[-_.]?(temp|tmp|work|scratch|draft).*$/i,
     type: "regex",
     reason: "Claude temporary/working file",
   },
   {
-    pattern: /^\.?claude\.(temp|tmp|work|scratch|draft)$/i,
-    type: "regex",
-    reason: "Claude temporary/working file",
-  },
-  {
-    pattern: /^\.?claude[-_]?(output|result|analysis|report).*$/i,
+    pattern: /^\.?claude[-_.]?(output|result|analysis|report).*$/i,
     type: "regex",
     reason: "Claude output/analysis file",
   },
 
-  // Lock and process files - regex for flexibility
+  // Lock and process files - extended glob
   {
-    pattern: /^\.?claude.*\.(lock|pid|socket)$/i,
-    type: "regex",
+    pattern: "?(.)claude*.@(lock|pid|socket)",
+    type: "glob",
     reason: "Claude process/lock file",
   },
   {
-    pattern: /^\.?claude[-_]?(lock|process|run).*$/i,
-    type: "regex",
+    pattern: "?(.)claude?(-|_)@(lock|process|run)*",
+    type: "glob",
     reason: "Claude process/lock file",
   },
 
-  // Debug and diagnostic files - regex for flexibility
+  // Debug and diagnostic files - extended glob
   {
-    pattern: /^\.?claude[-_]?(debug|trace|profile|diagnostic).*$/i,
-    type: "regex",
+    pattern: "?(.)claude?(-|_)@(debug|trace|profile|diagnostic)*",
+    type: "glob",
     reason: "Claude debug/diagnostic file",
   },
   {
-    pattern: /^\.?claude.*\.(debug|trace|profile|diagnostic)$/i,
-    type: "regex",
-    reason: "Claude debug/diagnostic file",
-  },
-  {
-    pattern: /^\.?claude\.(diagnostic|lock|pid|socket)$/i,
-    type: "regex",
+    pattern: "?(.)claude*.@(debug|trace|profile|diagnostic)",
+    type: "glob",
     reason: "Claude debug/diagnostic file",
   },
 
-  // Export and archive files - regex for flexibility
+  // Export and archive files - extended glob
   {
-    pattern: /^\.?claude[-_]?(export|archive|dump|snapshot).*$/i,
-    type: "regex",
+    pattern: "?(.)claude?(-|_)@(export|archive|dump|snapshot)*",
+    type: "glob",
     reason: "Claude export/archive file",
   },
   {
-    pattern: /^\.?claude[-_.].*\.(export|archive|dump|snapshot)$/i,
-    type: "regex",
+    pattern: "?(.)claude?(-|_|.)*.@(export|archive|dump|snapshot)",
+    type: "glob",
     reason: "Claude export/archive file",
   },
 
-  // Workspace directories - use regex for flexibility
+  // Workspace directories - extended glob
   {
-    pattern: /^\.?claude[-_]?(workspace|project|sessions?|temp|cache|data)$/i,
-    type: "regex",
+    pattern: "?(.)claude?(-|_)@(workspace|project|session|sessions|temp|cache|data)",
+    type: "glob",
     reason: "Claude workspace directory",
   },
 
   // Documentation files - regex for flexibility
   {
-    pattern: /^claude[-_]?(notes?|docs?|readme|instructions?).*\.(md|txt|rst)$/i,
+    pattern: /^claude[-_.]?(notes?|docs?|readme|instructions?).*\.(md|txt|rst)$/i,
     type: "regex",
     reason: "Claude documentation file",
   },
   {
-    pattern: /^\.claude[-_.].*\.(notes?|md|txt|rst)$/i,
+    pattern: /^\.claude[-_.].*\.(notes?|readme|md|txt|rst)$/i,
     type: "regex",
     reason: "Claude documentation file",
   },
@@ -134,15 +114,15 @@ const EXTENDED_CLAUDE_PATTERNS: PatternConfig[] = [
     reason: "Claude documentation file",
   },
 
-  // Scripts and executables - regex for flexibility
+  // Scripts and executables - extended glob
   {
-    pattern: /^\.?claude[-_]?(script|tool|utility|helper).*$/i,
-    type: "regex",
+    pattern: "?(.)claude?(-|_)@(script|tool|utility|helper)*",
+    type: "glob",
     reason: "Claude script/utility file",
   },
   {
-    pattern: /^\.?claude[-_.].*\.(sh|bat|ps1|py|js|ts)$/i,
-    type: "regex",
+    pattern: "?(.)claude?(-|_|.)*.@(sh|bat|ps1|py|js|ts)",
+    type: "glob",
     reason: "Claude script/utility file",
   },
 
