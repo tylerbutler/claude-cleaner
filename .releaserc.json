@@ -59,7 +59,9 @@
         { "path": "dist/claude-cleaner-windows-x64.exe", "label": "Windows x64 binary" }
       ],
       "successComment": "🎉 This ${issue.pull_request ? 'PR is included' : 'issue has been resolved'} in version ${nextRelease.version}.\n\nThe release is available:\n- [GitHub release](${releases[0].url})\n- [JSR package](https://jsr.io/@tylerbu/claude-cleaner)\n\n### Installation\n\n```bash\n# Via JSR\ndeno add @tylerbu/claude-cleaner\n\n# Or download binaries from the GitHub release\n```",
-      "releasedLabels": ["released<%= nextRelease.channel ? ` on @\${nextRelease.channel}` : \"\" %>"]
+      "releasedLabels": [
+        "released<%= nextRelease.channel ? ` on @${nextRelease.channel}` : \"\" %>"
+      ]
     }]
   ]
 }
