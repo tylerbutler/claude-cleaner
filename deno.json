@@ -52,5 +52,10 @@
   "test": {
     "include": ["tests/**/*.test.ts", "src/**/*.test.ts"],
     "exclude": ["tests/fixtures/**/*"]
-  }
+  },
+  "exclude": [
+    "node_modules/",
+    "package.json",
+    "package-lock.json"
+  ]
 }
