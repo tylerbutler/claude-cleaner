@@ -68,11 +68,9 @@ async function createTestFiles(
 
 async function runClaude(
   args: string[],
-  cwd: string,
 ): Promise<{ stdout: string; stderr: string; success: boolean }> {
   const cmd = new Deno.Command("deno", {
     args: ["run", "--allow-all", "src/main.ts", ...args],
-    cwd,
     stdout: "piped",
     stderr: "piped",
   });
@@ -90,20 +88,12 @@ async function runClaude(
 
 Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
   const tempDir = await Deno.makeTempDir({ prefix: "claude-cleaner-cli-test" });
-  const cliDir = Deno.cwd(); // Directory containing the claude-cleaner source
 
   await t.step("should reject conflicting flags", async () => {
     const repoPath = await createTestRepo(tempDir);
 
     const result = await runClaude(
-      [
-        "--repo-path",
-        repoPath,
-        "--include-all-common-patterns",
-        "--no-defaults",
-        "--files-only",
-      ],
-      cliDir,
+      [repoPath, "--include-all-common-patterns", "--no-defaults", "--files-only"],
     );
 
     assert(!result.success, "Should fail with conflicting flags");
@@ -135,14 +125,7 @@ Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
     await Deno.writeTextFile(join(repoPath, ".vscode/claude.json"), "{}");
 
     const result = await runClaude(
-      [
-        "--repo-path",
-        repoPath,
-        "--include-all-common-patterns",
-        "--files-only",
-        "--verbose",
-      ],
-      cliDir,
+      [repoPath, "--include-all-common-patterns", "--files-only", "--verbose"],
     );
 
     assert(result.success, `Command should succeed. stderr: ${result.stderr}`);
@@ -189,8 +172,7 @@ Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
       });
 
       const result = await runClaude(
-        ["--repo-path", repoPath, "--files-only", "--verbose"],
-        cliDir,
+        [repoPath, "--files-only", "--verbose"],
       );
 
       assert(
@@ -211,7 +193,7 @@ Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
   );
 
   await t.step("should show help for the new flag", async () => {
-    const result = await runClaude(["--help"], cliDir);
+    const result = await runClaude(["--help"]);
 
     assert(result.success, "Help command should succeed");
     assert(
@@ -244,14 +226,7 @@ Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
 
     // Test with --verbose
     const result1 = await runClaude(
-      [
-        "--repo-path",
-        repoPath,
-        "--include-all-common-patterns",
-        "--files-only",
-        "--verbose",
-      ],
-      cliDir,
+      [repoPath, "--include-all-common-patterns", "--files-only", "--verbose"],
     );
 
     assert(result1.success, "Should work with --verbose");
@@ -259,13 +234,7 @@ Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
 
     // Test with --files-only
     const result2 = await runClaude(
-      [
-        "--repo-path",
-        repoPath,
-        "--include-all-common-patterns",
-        "--files-only",
-      ],
-      cliDir,
+      [repoPath, "--include-all-common-patterns", "--files-only"],
     );
 
     assert(result2.success, "Should work with --files-only");
@@ -291,20 +260,12 @@ Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
 
     // Run without the flag
     const resultDefault = await runClaude(
-      ["--repo-path", repoPath, "--files-only", "--verbose"],
-      cliDir,
+      [repoPath, "--files-only", "--verbose"],
     );
 
     // Run with the flag
     const resultAll = await runClaude(
-      [
-        "--repo-path",
-        repoPath,
-        "--include-all-common-patterns",
-        "--files-only",
-        "--verbose",
-      ],
-      cliDir,
+      [repoPath, "--include-all-common-patterns", "--files-only", "--verbose"],
     );
 
     assert(

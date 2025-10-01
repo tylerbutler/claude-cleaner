@@ -457,7 +457,7 @@ if (cleanedMessage.trim()) {
         .stderr("piped")
         .noThrow();
       if (result.code !== 0) {
-        throw new AppError("Not in a Git repository", "NOT_GIT_REPOSITORY");
+        throw new AppError("Not in a Git repository", "NOT_GIT_REPO");
       }
     } catch (error) {
       throw new AppError(

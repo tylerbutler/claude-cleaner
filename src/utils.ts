@@ -145,10 +145,47 @@ export function formatGitRef(ref: string): string {
   return `\x1b[1;34m${shortRef}\x1b[0;34m${rest}\x1b[0m`;
 }
 
+export type ErrorCode =
+  | "BACKUP_CREATION_FAILED"
+  | "BACKUP_ERROR"
+  | "BACKUP_FAILED"
+  | "BFG_DOWNLOAD_ERROR"
+  | "BFG_DOWNLOAD_FAILED"
+  | "BFG_DOWNLOAD_VERIFICATION_FAILED"
+  | "BFG_ERROR"
+  | "BFG_NOT_AVAILABLE"
+  | "BFG_NOT_FOUND"
+  | "COMMIT_CLEANING_FAILED"
+  | "COMMIT_LIST_FAILED"
+  | "COMMIT_MESSAGE_FAILED"
+  | "DEPENDENCY_CHECK_FAILED"
+  | "EMPTY_REPO"
+  | "FILE_READ_ERROR"
+  | "FILTER_BRANCH_FAILED"
+  | "GET_BRANCH_FAILED"
+  | "GIT_VALIDATION_FAILED"
+  | "INVALID_OPTIONS"
+  | "INVALID_PATTERN"
+  | "JAVA_CONFIG_FAILED"
+  | "JAVA_INSTALL_ERROR"
+  | "JAVA_INSTALL_FAILED"
+  | "MISE_INSTALL_FAILED"
+  | "MISSING_DEPENDENCIES"
+  | "NOT_GIT_REPO"
+  | "REPO_PATH_REQUIRED"
+  | "SCAN_ERROR"
+  | "SD_CONFIG_FAILED"
+  | "SD_INSTALL_ERROR"
+  | "SD_INSTALL_FAILED"
+  | "SD_NOT_AVAILABLE"
+  | "UNSUPPORTED_PLATFORM"
+  | "WORKING_TREE_CHECK_FAILED"
+  | "WORKING_TREE_DIRTY";
+
 export class AppError extends Error {
   constructor(
     message: string,
-    public readonly code: string,
+    public readonly code: ErrorCode,
     public override readonly cause?: Error,
   ) {
     super(message);

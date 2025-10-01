@@ -11,7 +11,7 @@ import {
   loadDirectoryPatterns,
 } from "./utils.ts";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 interface CleanOptions {
   execute?: boolean | undefined;
@@ -19,7 +19,6 @@ interface CleanOptions {
   autoInstall?: boolean | undefined;
   filesOnly?: boolean | undefined;
   commitsOnly?: boolean | undefined;
-  repoPath?: string | undefined;
   branch?: string | undefined;
   includeDirs?: string[] | undefined;
   includeDirsFile?: string | undefined;
@@ -72,12 +71,20 @@ function displayClaudeFiles(
   }
 }
 
-async function cleanAction(options: CleanOptions) {
+async function cleanAction(
+  options: CleanOptions,
+  repoPath?: string,
+) {
   const logger = new ConsoleLogger(options.verbose);
   const depManager = new DependencyManager(logger);
 
   try {
-    const repoPath = options.repoPath || Deno.cwd();
+    if (!repoPath) {
+      throw new AppError(
+        "Repository path is required. Usage: claude-cleaner <path>\nExample: claude-cleaner . (for current directory)",
+        "REPO_PATH_REQUIRED",
+      );
+    }
 
     // Default to dry-run mode unless --execute flag is provided
     const isDryRun = !options.execute;
@@ -169,7 +176,7 @@ async function cleanAction(options: CleanOptions) {
         if (error instanceof AppError && error.code === "NOT_GIT_REPO") {
           logger.error(`Not a Git repository: ${repoPath}`);
           logger.info(
-            "Please run this command from within a Git repository or specify a path with --repo-path",
+            "Please specify a valid Git repository path as the first argument",
           );
         } else {
           throw error;
@@ -238,7 +245,7 @@ async function cleanAction(options: CleanOptions) {
         if (error instanceof AppError && error.code === "NOT_GIT_REPO") {
           logger.error(`Not a Git repository: ${repoPath}`);
           logger.info(
-            "Please run this command from within a Git repository or specify a path with --repo-path",
+            "Please run this command from within a Git repository or specify a path: claude-cleaner <path>",
           );
           throw error;
         } else {
@@ -425,6 +432,7 @@ async function main() {
       .help({
         colors: true,
       })
+      .arguments("[repo-path:string]")
       .option(
         "-x, --execute",
         "Execute changes (default: dry-run mode shows what would be changed)",
@@ -438,10 +446,6 @@ async function main() {
       .option(
         "--commits-only",
         "Clean only commit messages (skip file removal)",
-      )
-      .option(
-        "--repo-path <path:string>",
-        "Path to Git repository (defaults to current directory)",
       )
       .option("--branch <branch>", "Specify branch to clean (defaults to HEAD)")
       .option(

@@ -3,7 +3,40 @@
  */
 
 import { assert } from "@std/assert";
+import { ensureDir } from "@std/fs";
 import { join } from "@std/path";
+
+// Test helper to create a minimal git repository for testing
+async function createTestRepo(tempDir: string): Promise<string> {
+  const repoPath = join(tempDir, "test-repo");
+  await ensureDir(repoPath);
+
+  // Initialize Git repo
+  const git = async (cmd: string) => {
+    const process = new Deno.Command("git", {
+      args: cmd.split(" "),
+      cwd: repoPath,
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const result = await process.output();
+    if (!result.success) {
+      const stderr = new TextDecoder().decode(result.stderr);
+      throw new Error(`Git command failed: ${cmd}\n${stderr}`);
+    }
+  };
+
+  await git("init");
+  await git("config user.name Test");
+  await git("config user.email test@example.com");
+
+  // Create initial commit
+  await Deno.writeTextFile(join(repoPath, "README.md"), "# Test Repo");
+  await git("add README.md");
+  await git("commit -m Initial");
+
+  return repoPath;
+}
 
 // Test helper to run CLI with specific arguments
 async function runCLI(
@@ -27,6 +60,13 @@ async function runCLI(
 }
 
 Deno.test("CLI Options - Directory Patterns", async (t) => {
+  const tempDir = await Deno.makeTempDir({ prefix: "claude-cleaner-cli-test" });
+  let repoPath: string;
+
+  await t.step("setup", async () => {
+    repoPath = await createTestRepo(tempDir);
+  });
+
   await t.step("should show help with new options", async () => {
     const result = await runCLI(["--help"]);
 
@@ -41,6 +81,7 @@ Deno.test("CLI Options - Directory Patterns", async (t) => {
 
   await t.step("should accept single --include-dirs flag", async () => {
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs",
       "claudedocs",
@@ -55,6 +96,7 @@ Deno.test("CLI Options - Directory Patterns", async (t) => {
 
   await t.step("should accept multiple --include-dirs flags", async () => {
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs",
       "claudedocs",
@@ -73,6 +115,7 @@ Deno.test("CLI Options - Directory Patterns", async (t) => {
 
   await t.step("should accept --no-defaults flag", async () => {
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs",
       ".serena",
@@ -87,6 +130,7 @@ Deno.test("CLI Options - Directory Patterns", async (t) => {
 
   await t.step("should handle pattern validation errors", async () => {
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs",
       "../dangerous",
@@ -103,6 +147,7 @@ Deno.test("CLI Options - Directory Patterns", async (t) => {
 
   await t.step("should handle multiple invalid patterns", async () => {
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs",
       "../parent",
@@ -118,6 +163,7 @@ Deno.test("CLI Options - Directory Patterns", async (t) => {
 
   await t.step("should show warnings for broad patterns", async () => {
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs",
       "temp",
@@ -135,16 +181,26 @@ Deno.test("CLI Options - Directory Patterns", async (t) => {
         result.stderr.includes("Pattern 'cache' may match many directories"),
     );
   });
+
+  await t.step("cleanup", async () => {
+    await Deno.remove(tempDir, { recursive: true });
+  });
 });
 
 Deno.test("CLI Options - Pattern File", async (t) => {
   const tempDir = await Deno.makeTempDir({ prefix: "claude-cleaner-cli-test" });
+  let repoPath: string;
+
+  await t.step("setup", async () => {
+    repoPath = await createTestRepo(tempDir);
+  });
 
   await t.step("should accept --include-dirs-file option", async () => {
     const patternsFile = join(tempDir, "patterns.txt");
     await Deno.writeTextFile(patternsFile, "claudedocs\n.serena\ntemp");
 
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs-file",
       patternsFile,
@@ -163,6 +219,7 @@ Deno.test("CLI Options - Pattern File", async (t) => {
     const missingFile = join(tempDir, "does-not-exist.txt");
 
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs-file",
       missingFile,
@@ -178,6 +235,7 @@ Deno.test("CLI Options - Pattern File", async (t) => {
     await Deno.writeTextFile(patternsFile, "claudedocs\n.serena");
 
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs",
       "extra-dir",
@@ -205,6 +263,7 @@ claudedocs
     await Deno.writeTextFile(patternsFile, content);
 
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs-file",
       patternsFile,
@@ -226,6 +285,7 @@ claudedocs
     await Deno.writeTextFile(patternsFile, content);
 
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs-file",
       patternsFile,
@@ -243,13 +303,22 @@ claudedocs
     await Deno.remove(patternsFile);
   });
 
-  // Cleanup
-  await Deno.remove(tempDir, { recursive: true });
+  await t.step("cleanup", async () => {
+    await Deno.remove(tempDir, { recursive: true });
+  });
 });
 
 Deno.test("CLI Options - Integration with Existing Flags", async (t) => {
+  const tempDir = await Deno.makeTempDir({ prefix: "claude-cleaner-cli-test" });
+  let repoPath: string;
+
+  await t.step("setup", async () => {
+    repoPath = await createTestRepo(tempDir);
+  });
+
   await t.step("should work with --files-only", async () => {
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs",
       "claudedocs",
@@ -263,6 +332,7 @@ Deno.test("CLI Options - Integration with Existing Flags", async (t) => {
 
   await t.step("should work with --commits-only", async () => {
     const result = await runCLI([
+      repoPath,
       "--commits-only",
       "--include-dirs",
       "claudedocs",
@@ -277,6 +347,7 @@ Deno.test("CLI Options - Integration with Existing Flags", async (t) => {
 
   await t.step("should work with --verbose", async () => {
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs",
       "claudedocs",
@@ -291,6 +362,7 @@ Deno.test("CLI Options - Integration with Existing Flags", async (t) => {
 
   await t.step("should work with dry-run (default)", async () => {
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs",
       "claudedocs",
@@ -304,6 +376,7 @@ Deno.test("CLI Options - Integration with Existing Flags", async (t) => {
 
   await t.step("should work with --execute", async () => {
     const result = await runCLI([
+      repoPath,
       "--files-only",
       "--include-dirs",
       "claudedocs",
@@ -316,5 +389,35 @@ Deno.test("CLI Options - Integration with Existing Flags", async (t) => {
         result.stderr.includes("MISSING_DEPENDENCIES") ||
         result.stderr.includes("BFG_NOT_FOUND"),
     );
+  });
+
+  await t.step("cleanup", async () => {
+    await Deno.remove(tempDir, { recursive: true });
+  });
+});
+
+Deno.test("CLI Options - Repository Path Requirement", async (t) => {
+  await t.step("should require repository path argument", async () => {
+    const result = await runCLI(["--files-only"]);
+
+    assert(!result.success);
+    assert(result.stderr.includes("REPO_PATH_REQUIRED"));
+    assert(
+      result.stderr.includes("Repository path is required"),
+    );
+  });
+
+  await t.step("should fail with helpful error when no args provided", async () => {
+    const result = await runCLI([]);
+
+    assert(!result.success);
+    assert(result.stderr.includes("REPO_PATH_REQUIRED"));
+  });
+
+  await t.step("should fail when only flags provided, no path", async () => {
+    const result = await runCLI(["--verbose", "--files-only"]);
+
+    assert(!result.success);
+    assert(result.stderr.includes("REPO_PATH_REQUIRED"));
   });
 });
