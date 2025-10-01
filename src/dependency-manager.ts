@@ -229,6 +229,11 @@ export class DependencyManager {
 
   async checkDependency(tool: string): Promise<DependencyCheckResult> {
     try {
+      // Try to find mise path if not already set (needed for all tools)
+      if (!this.misePath) {
+        this.misePath = (await this.findExecutablePath("mise")) || undefined;
+      }
+
       const miseCmd = this.misePath || "mise";
 
       switch (tool) {
@@ -300,14 +305,8 @@ export class DependencyManager {
         }
 
         case "mise": {
-          // Try to find mise path if not already set
-          if (!this.misePath) {
-            this.misePath = (await this.findExecutablePath("mise")) ||
-              undefined;
-          }
-
-          const miseCheckCmd = this.misePath || "mise";
-          const result = await $`${miseCheckCmd} --version`
+          // misePath is already set at the start of checkDependency()
+          const result = await $`${miseCmd} --version`
             .stdout("piped")
             .stderr("piped")
             .noThrow();
