@@ -169,18 +169,34 @@ const EXTENDED_CLAUDE_PATTERNS = [
   },
 
   // IDE integration files - glob is perfect for path wildcards
+  // Note: Matches .vscode/claude* files starting with "claude" but NOT .vscode/include-claude* or other legitimate files
   {
-    pattern: "**/.vscode/*claude*",
+    pattern: "**/.vscode/claude*",
     type: "glob",
     reason: "IDE Claude integration file",
   },
   {
-    pattern: "**/.idea/*claude*",
+    pattern: "**/.vscode/.claude*",
     type: "glob",
     reason: "IDE Claude integration file",
   },
   {
-    pattern: "**/.eclipse/*claude*",
+    pattern: "**/.idea/claude*",
+    type: "glob",
+    reason: "IDE Claude integration file",
+  },
+  {
+    pattern: "**/.idea/.claude*",
+    type: "glob",
+    reason: "IDE Claude integration file",
+  },
+  {
+    pattern: "**/.eclipse/claude*",
+    type: "glob",
+    reason: "IDE Claude integration file",
+  },
+  {
+    pattern: "**/.eclipse/.claude*",
     type: "glob",
     reason: "IDE Claude integration file",
   },
@@ -214,7 +230,7 @@ const EXTENDED_CLAUDE_PATTERNS = [
  * Note: Extended glob operators like ?(pattern), @(pattern), etc. use parentheses and pipes,
  * but these are valid glob syntax and should not be rejected.
  */
-function validateGlobPattern(pattern: string): void {
+export function validateGlobPattern(pattern: string): void {
   // Check for regex-specific character classes like \d, \w, \s, etc.
   const regexCharClasses = /\\[dwsDWS]/;
   if (regexCharClasses.test(pattern)) {
@@ -246,7 +262,7 @@ function validateGlobPattern(pattern: string): void {
  * - More specific patterns should be listed before broader patterns
  * - Directory patterns match path components, not just basenames
  */
-class PatternMatcher {
+export class PatternMatcher {
   private patterns: Array<{ regex: RegExp; reason: string }>;
 
   constructor(patterns: readonly PatternConfig[]) {
