@@ -210,10 +210,20 @@ export class DependencyManager {
     try {
       switch (tool) {
         case "java": {
-          const result = await $`java -version`
+          // Try mise exec first (for tools installed via mise)
+          let result = await $`mise exec -- java -version`
             .stdout("piped")
             .stderr("piped")
             .noThrow();
+
+          // Fall back to direct command if mise exec fails
+          if (result.code !== 0) {
+            result = await $`java -version`
+              .stdout("piped")
+              .stderr("piped")
+              .noThrow();
+          }
+
           if (result.code === 0) {
             // Java version output goes to stderr
             const versionMatch = result.stderr.match(/version "([^"]+)"/);
@@ -228,10 +238,20 @@ export class DependencyManager {
         }
 
         case "sd": {
-          const result = await $`sd --version`
+          // Try mise exec first (for tools installed via mise)
+          let result = await $`mise exec -- sd --version`
             .stdout("piped")
             .stderr("piped")
             .noThrow();
+
+          // Fall back to direct command if mise exec fails
+          if (result.code !== 0) {
+            result = await $`sd --version`
+              .stdout("piped")
+              .stderr("piped")
+              .noThrow();
+          }
+
           if (result.code === 0) {
             return {
               tool,
