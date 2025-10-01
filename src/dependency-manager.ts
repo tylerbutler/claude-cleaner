@@ -300,7 +300,14 @@ export class DependencyManager {
         }
 
         case "mise": {
-          const result = await $`${miseCmd} --version`
+          // Try to find mise path if not already set
+          if (!this.misePath) {
+            this.misePath = (await this.findExecutablePath("mise")) ||
+              undefined;
+          }
+
+          const miseCheckCmd = this.misePath || "mise";
+          const result = await $`${miseCheckCmd} --version`
             .stdout("piped")
             .stderr("piped")
             .noThrow();
@@ -309,7 +316,7 @@ export class DependencyManager {
               tool,
               available: true,
               version: result.stdout.trim(),
-              path: (await this.findExecutablePath("mise")) || undefined,
+              path: this.misePath,
             };
           }
           return { tool, available: false, error: result.stderr };
