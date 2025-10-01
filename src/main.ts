@@ -3,6 +3,11 @@ import { CommitCleaner } from "./commit-cleaner.ts";
 import { DependencyManager } from "./dependency-manager.ts";
 import { FileCleaner } from "./file-cleaner.ts";
 import {
+  displaySelectionSummary,
+  selectFilesToClean,
+  type FileEntry,
+} from "./interactive-selector.ts";
+import {
   AppError,
   checkForMissingDependencies,
   ConsoleLogger,
@@ -24,6 +29,7 @@ interface CleanOptions {
   includeDirsFile?: string | undefined;
   defaults?: boolean | undefined;
   includeAllCommonPatterns?: boolean | undefined;
+  interactive?: boolean | undefined;
 }
 
 function createFileCleaner(
@@ -162,15 +168,42 @@ async function cleanAction(
           return;
         }
 
-        displayClaudeFiles(claudeFiles, logger);
+        // Interactive mode: let user select files
+        if (options.interactive) {
+          const selectedPaths = await selectFilesToClean(claudeFiles, logger);
 
-        if (isDryRun) {
-          logger.info(
-            "\nDry-run complete. Use --execute to remove these files.",
+          if (selectedPaths.length === 0) {
+            logger.info("\nNo files selected. Exiting.");
+            return;
+          }
+
+          // Filter to only selected files
+          const selectedFiles = claudeFiles.filter((f) =>
+            selectedPaths.includes(f.path)
           );
+
+          displaySelectionSummary(selectedPaths, claudeFiles, logger);
+
+          if (isDryRun) {
+            logger.info(
+              "\nDry-run complete. Use --execute --interactive to remove selected files.",
+            );
+          } else {
+            // Remove only selected files
+            await fileCleaner.cleanFiles(selectedFiles);
+          }
         } else {
-          // Actually remove the files
-          await fileCleaner.cleanFiles();
+          // Non-interactive: show all and process all
+          displayClaudeFiles(claudeFiles, logger);
+
+          if (isDryRun) {
+            logger.info(
+              "\nDry-run complete. Use --execute to remove these files.",
+            );
+          } else {
+            // Actually remove the files
+            await fileCleaner.cleanFiles();
+          }
         }
       } catch (error) {
         if (error instanceof AppError && error.code === "NOT_GIT_REPO") {
@@ -230,15 +263,39 @@ async function cleanAction(
         if (claudeFiles.length === 0) {
           logger.info("No Claude files found in repository");
         } else {
-          displayClaudeFiles(claudeFiles, logger);
+          // Interactive mode: let user select files
+          if (options.interactive) {
+            const selectedPaths = await selectFilesToClean(claudeFiles, logger);
 
-          if (isDryRun) {
-            logger.info(
-              "\nFile scan complete. Use --execute to remove these files.",
-            );
+            if (selectedPaths.length === 0) {
+              logger.info("\nNo files selected for removal.");
+            } else {
+              const selectedFiles = claudeFiles.filter((f) =>
+                selectedPaths.includes(f.path)
+              );
+
+              displaySelectionSummary(selectedPaths, claudeFiles, logger);
+
+              if (isDryRun) {
+                logger.info(
+                  "\nFile scan complete. Use --execute --interactive to remove selected files.",
+                );
+              } else {
+                await fileCleaner.cleanFiles(selectedFiles);
+              }
+            }
           } else {
-            // Actually remove the files
-            await fileCleaner.cleanFiles();
+            // Non-interactive: show all and process all
+            displayClaudeFiles(claudeFiles, logger);
+
+            if (isDryRun) {
+              logger.info(
+                "\nFile scan complete. Use --execute to remove these files.",
+              );
+            } else {
+              // Actually remove the files
+              await fileCleaner.cleanFiles();
+            }
           }
         }
       } catch (error) {
@@ -464,6 +521,10 @@ async function main() {
       .option(
         "--include-all-common-patterns",
         "Include ALL known common Claude patterns (even rarely used ones) - use for complete cleanup",
+      )
+      .option(
+        "-i, --interactive",
+        "Interactively select which files to remove with a tree view selector",
       )
       .action(cleanAction)
       .command("check-deps", "Check if all required dependencies are available")
