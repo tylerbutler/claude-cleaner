@@ -1,137 +1,265 @@
-import { basename, join } from "@std/path";
+import { basename, globToRegExp, join } from "@std/path";
 import { $, CommandBuilder } from "dax";
 import { AppError, dirExists, fileExists, formatGitRef, type Logger } from "./utils.ts";
 
-// Claude file pattern definitions
-interface PatternDefinition {
-  pattern: RegExp;
+// Hybrid pattern system: use glob for simple patterns, RegExp for complex ones
+interface PatternConfig {
+  pattern: string | RegExp;
+  type: "glob" | "regex";
   reason: string;
 }
 
-const EXTENDED_CLAUDE_PATTERNS: PatternDefinition[] = [
-  // Configuration files
+// Claude file patterns using hybrid approach (glob for readability, regex for flexibility)
+const EXTENDED_CLAUDE_PATTERNS: PatternConfig[] = [
+  // Configuration files - use regex for flexible separator matching
   {
     pattern: /^\.?claude[-_.].*\.(json|yaml|yml|toml|ini|config)$/i,
+    type: "regex",
+    reason: "Claude configuration file (extended pattern)",
+  },
+  {
+    pattern: /^\.?claude\.(json|yaml|yml|toml|ini|config)$/i,
+    type: "regex",
     reason: "Claude configuration file (extended pattern)",
   },
   {
     pattern: /^claude[-_]?(config|settings|workspace|env).*$/i,
+    type: "regex",
     reason: "Claude workspace/settings file",
   },
 
-  // Session and state files
+  // Session and state files - use regex for flexible matching
   {
     pattern: /^\.?claude[-_]?(session|state|cache|history).*$/i,
+    type: "regex",
     reason: "Claude session/state file",
   },
   {
     pattern: /^\.?claude[-_.](session|state|cache|history)$/i,
+    type: "regex",
     reason: "Claude session/state file",
   },
 
-  // Backup files (must come before numbered files to avoid conflict)
+  // Backup files - use regex for flexibility
   {
     pattern: /^\.?claude[-_.].*\.(bak|backup|old|orig|save)$/i,
+    type: "regex",
     reason: "Claude backup file",
   },
   {
     pattern: /^\.?claude\.(bak|backup|old|orig|save)$/i,
+    type: "regex",
     reason: "Claude backup file",
   },
 
-  // Temporary and working files
+  // Temporary and working files - use regex for complex patterns
   {
     pattern: /^\.?claude[-_]?(temp|tmp|work|scratch|draft).*$/i,
+    type: "regex",
     reason: "Claude temporary/working file",
   },
   {
     pattern: /^\.?claude\.(temp|tmp|work|scratch|draft)$/i,
+    type: "regex",
     reason: "Claude temporary/working file",
   },
   {
     pattern: /^\.?claude[-_]?(output|result|analysis|report).*$/i,
+    type: "regex",
     reason: "Claude output/analysis file",
   },
 
-  // Lock and process files
+  // Lock and process files - regex for flexibility
   {
     pattern: /^\.?claude.*\.(lock|pid|socket)$/i,
+    type: "regex",
     reason: "Claude process/lock file",
   },
   {
     pattern: /^\.?claude[-_]?(lock|process|run).*$/i,
+    type: "regex",
     reason: "Claude process/lock file",
   },
 
-  // Debug and diagnostic files
+  // Debug and diagnostic files - regex for flexibility
   {
     pattern: /^\.?claude[-_]?(debug|trace|profile|diagnostic).*$/i,
+    type: "regex",
     reason: "Claude debug/diagnostic file",
   },
   {
     pattern: /^\.?claude.*\.(debug|trace|profile|diagnostic)$/i,
+    type: "regex",
     reason: "Claude debug/diagnostic file",
   },
   {
     pattern: /^\.?claude\.(diagnostic|lock|pid|socket)$/i,
+    type: "regex",
     reason: "Claude debug/diagnostic file",
   },
 
-  // Export and archive files
+  // Export and archive files - regex for flexibility
   {
     pattern: /^\.?claude[-_]?(export|archive|dump|snapshot).*$/i,
+    type: "regex",
     reason: "Claude export/archive file",
   },
   {
     pattern: /^\.?claude[-_.].*\.(export|archive|dump|snapshot)$/i,
+    type: "regex",
     reason: "Claude export/archive file",
   },
 
-  // Workspace directories
+  // Workspace directories - use regex for flexibility
   {
     pattern: /^\.?claude[-_]?(workspace|project|sessions?|temp|cache|data)$/i,
+    type: "regex",
     reason: "Claude workspace directory",
   },
 
-  // Documentation files
+  // Documentation files - regex for flexibility
   {
     pattern: /^claude[-_]?(notes?|docs?|readme|instructions?).*\.(md|txt|rst)$/i,
+    type: "regex",
     reason: "Claude documentation file",
   },
   {
     pattern: /^\.claude[-_.].*\.(notes?|md|txt|rst)$/i,
+    type: "regex",
+    reason: "Claude documentation file",
+  },
+  {
+    pattern: /^\.claude\.(notes?|readme|md|txt|rst)$/i,
+    type: "regex",
     reason: "Claude documentation file",
   },
 
-  // Scripts and executables
+  // Scripts and executables - regex for flexibility
   {
     pattern: /^\.?claude[-_]?(script|tool|utility|helper).*$/i,
+    type: "regex",
     reason: "Claude script/utility file",
   },
   {
     pattern: /^\.?claude[-_.].*\.(sh|bat|ps1|py|js|ts)$/i,
+    type: "regex",
     reason: "Claude script/utility file",
   },
 
-  // Hidden files and dotfiles
-  { pattern: /^\.claude[a-z0-9_-]+$/i, reason: "Claude hidden/dot file" },
+  // Hidden files and dotfiles - regex required for character classes
+  {
+    pattern: /^\.claude[a-z0-9_-]+$/i,
+    type: "regex",
+    reason: "Claude hidden/dot file",
+  },
 
-  // Numbered/versioned files (must come after backup files)
+  // Numbered/versioned files - regex required for numeric matching
   {
     pattern: /^\.?claude[-_]?.*[0-9]+.*$/i,
+    type: "regex",
     reason: "Claude numbered/versioned file",
   },
   {
     pattern: /^\.?claude.*v[0-9]+.*$/i,
+    type: "regex",
     reason: "Claude numbered/versioned file",
   },
 
-  // OS-specific files
+  // OS-specific files - glob is readable here
   {
-    pattern: /^\.?claude[-_.].*\.(DS_Store|Thumbs\.db|desktop\.ini)$/i,
+    pattern: ".claude*.DS_Store",
+    type: "glob",
     reason: "Claude OS-specific file",
   },
+  {
+    pattern: "claude*.DS_Store",
+    type: "glob",
+    reason: "Claude OS-specific file",
+  },
+  {
+    pattern: ".claude*.Thumbs.db",
+    type: "glob",
+    reason: "Claude OS-specific file",
+  },
+  {
+    pattern: "claude*.Thumbs.db",
+    type: "glob",
+    reason: "Claude OS-specific file",
+  },
+
+  // IDE integration files - glob is perfect for path wildcards
+  {
+    pattern: "**/.vscode/*claude*",
+    type: "glob",
+    reason: "IDE Claude integration file",
+  },
+  {
+    pattern: "**/.idea/*claude*",
+    type: "glob",
+    reason: "IDE Claude integration file",
+  },
+  {
+    pattern: "**/.eclipse/*claude*",
+    type: "glob",
+    reason: "IDE Claude integration file",
+  },
+
+  // Directory patterns for path matching - glob is clearer
+  {
+    pattern: "**/.claude-*/**",
+    type: "glob",
+    reason: "Claude directory (extended pattern)",
+  },
+  {
+    pattern: "**/.claude_*/**",
+    type: "glob",
+    reason: "Claude directory (extended pattern)",
+  },
+  {
+    pattern: "**/claude-*/**",
+    type: "glob",
+    reason: "Claude directory (extended pattern)",
+  },
+  {
+    pattern: "**/claude_*/**",
+    type: "glob",
+    reason: "Claude directory (extended pattern)",
+  },
 ];
+
+// Hybrid pattern matcher: uses glob for simple patterns, regex for complex ones
+class PatternMatcher {
+  private patterns: Array<{ regex: RegExp; reason: string }>;
+
+  constructor(patterns: PatternConfig[]) {
+    this.patterns = patterns.map(({ pattern, type, reason }) => {
+      let regex: RegExp;
+
+      if (type === "glob") {
+        // Convert glob to RegExp and make it case-insensitive
+        const baseRegex = globToRegExp(pattern as string, { extended: true, globstar: true });
+        regex = new RegExp(baseRegex.source, baseRegex.flags + "i");
+      } else {
+        // Use RegExp directly (already case-insensitive with /i flag)
+        regex = pattern as RegExp;
+      }
+
+      return { regex, reason };
+    });
+  }
+
+  matches(path: string): boolean {
+    return this.patterns.some(({ regex }) => regex.test(path));
+  }
+
+  getReason(path: string): string | undefined {
+    const match = this.patterns.find(({ regex }) => regex.test(path));
+    return match?.reason;
+  }
+}
+
+// Create pattern matcher instance with hybrid patterns
+const extendedPatternMatcher = new PatternMatcher(EXTENDED_CLAUDE_PATTERNS);
 
 export interface FileCleanerOptions {
   dryRun: boolean;
@@ -452,56 +580,15 @@ export class FileCleaner {
 
   private isAllCommonPatternsFile(relativePath: string): boolean {
     const fileName = basename(relativePath);
-    const lowerPath = relativePath.toLowerCase();
-    const lowerFileName = fileName.toLowerCase();
 
     // All current default patterns
     if (this.isClaudeFile(relativePath)) return true;
 
-    // Check extended patterns using data-driven approach
-    for (const { pattern } of EXTENDED_CLAUDE_PATTERNS) {
-      if (fileName.match(pattern)) return true;
-    }
+    // Check if path matches any extended glob pattern
+    if (extendedPatternMatcher.matches(relativePath)) return true;
 
-    // IDE-specific Claude files (path-based checks)
-    if (
-      (lowerPath.includes("/.vscode/") ||
-        lowerPath.startsWith(".vscode/") ||
-        lowerPath.includes("/.idea/") ||
-        lowerPath.startsWith(".idea/") ||
-        lowerPath.includes("/.eclipse/") ||
-        lowerPath.startsWith(".eclipse/")) &&
-      lowerFileName.includes("claude")
-    ) {
-      return true;
-    }
-
-    // Directory patterns (path-based checks)
-    if (lowerPath.includes("/.claude-") || lowerPath.startsWith(".claude-")) {
-      return true;
-    }
-    if (lowerPath.includes("/.claude_") || lowerPath.startsWith(".claude_")) {
-      return true;
-    }
-    if (lowerPath.includes("/claude_") || lowerPath.startsWith("claude_")) {
-      return true;
-    }
-    if (lowerPath.includes("/claude-") || lowerPath.startsWith("claude-")) {
-      return true;
-    }
-
-    // Hidden Claude files with additional constraints
-    if (
-      fileName.startsWith(".") &&
-      fileName.includes("claude") &&
-      fileName.length > 7 &&
-      !fileName.match(/^\.claude\.txt$/i)
-    ) {
-      return true;
-    }
-
-    // Special case: Thumbs.db in claude-related paths
-    if (fileName === "Thumbs.db" && lowerPath.includes("claude")) return true;
+    // Check if just the filename matches (for files in subdirectories)
+    if (extendedPatternMatcher.matches(fileName)) return true;
 
     // EXCLUDE simple generic files that should NOT be caught
     if (fileName.match(/^claude\.txt$/i)) return false;
@@ -527,9 +614,6 @@ export class FileCleaner {
 
     // If using all common patterns, provide more specific reasons
     if (this.options.includeAllCommonPatterns) {
-      const lowerPath = path.toLowerCase();
-      const lowerFileName = fileName.toLowerCase();
-
       // Default Claude patterns (still provide specific reasons)
       if (fileName === "CLAUDE.md") {
         return "Claude project configuration file";
@@ -547,24 +631,11 @@ export class FileCleaner {
         return "VSCode Claude extension configuration";
       }
 
-      // IDE integration files (check BEFORE general config patterns to avoid conflicts)
-      if (
-        (lowerPath.includes("/.vscode/") ||
-          lowerPath.startsWith(".vscode/") ||
-          lowerPath.includes("/.idea/") ||
-          lowerPath.startsWith(".idea/") ||
-          lowerPath.includes("/.eclipse/") ||
-          lowerPath.startsWith(".eclipse/")) &&
-        lowerFileName.includes("claude")
-      ) {
-        return "IDE Claude integration file";
-      }
-
-      // Check extended patterns using data-driven approach
-      for (const { pattern, reason } of EXTENDED_CLAUDE_PATTERNS) {
-        if (fileName.match(pattern)) {
-          return reason;
-        }
+      // Check extended patterns using pattern matcher
+      const reason = extendedPatternMatcher.getReason(path) ||
+        extendedPatternMatcher.getReason(fileName);
+      if (reason) {
+        return reason;
       }
 
       // Fall back to general Claude file if matched by all-patterns but not categorized above
