@@ -841,18 +841,14 @@ export class FileCleaner {
 
       if (uniqueFileNames.length > 0) {
         this.logger.verbose(
-          `Batching ${uniqueFileNames.length} file patterns: ${
-            uniqueFileNames.join(", ")
-          }`,
+          `Batching ${uniqueFileNames.length} file patterns: ${uniqueFileNames.join(", ")}`,
         );
         bfgArgs.push("--delete-files", `{${uniqueFileNames.join(",")}}`);
       }
 
       if (uniqueDirNames.length > 0) {
         this.logger.verbose(
-          `Batching ${uniqueDirNames.length} directory patterns: ${
-            uniqueDirNames.join(", ")
-          }`,
+          `Batching ${uniqueDirNames.length} directory patterns: ${uniqueDirNames.join(", ")}`,
         );
         bfgArgs.push("--delete-folders", `{${uniqueDirNames.join(",")}}`);
       }
