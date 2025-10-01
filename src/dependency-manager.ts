@@ -399,14 +399,39 @@ export class DependencyManager {
         .stderr("piped")
         .noThrow();
 
+      this.logger.verbose(
+        `findExecutablePath(${command}): code=${result.code}, stdout=${result.stdout}, stderr=${result.stderr}`,
+      );
+
       if (result.code === 0) {
         // 'where' on Windows can return multiple paths, take the first one
         const output = result.stdout.trim();
-        return isWindows ? output.split("\n")[0]?.trim() : output;
+        const path = isWindows ? output.split("\n")[0]?.trim() : output;
+        this.logger.verbose(`Found ${command} at: ${path}`);
+        return path;
       }
-    } catch {
-      // Ignore errors
+
+      // On Windows, if 'where' fails, try common mise installation locations
+      if (isWindows && command === "mise") {
+        const homeDir = systemInfo.homeDir || "";
+        const commonPaths = [
+          join(homeDir, "AppData", "Local", "mise", "shims", "mise.exe"),
+          join(homeDir, ".local", "bin", "mise.exe"),
+        ];
+
+        for (const checkPath of commonPaths) {
+          if (await fileExists(checkPath)) {
+            this.logger.verbose(`Found mise at fallback path: ${checkPath}`);
+            return checkPath;
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.verbose(
+        `findExecutablePath(${command}) failed: ${error}`,
+      );
     }
+    this.logger.verbose(`findExecutablePath(${command}): not found`);
     return undefined;
   }
 }
