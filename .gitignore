@@ -28,6 +28,9 @@ backup-*/
 .claude
 .serena
 
+# Project management
+/todos.md
+
 # npm dependencies (for semantic-release)
 node_modules/
 # NOTE: package-lock.json is intentionally committed for reproducible builds and security auditing

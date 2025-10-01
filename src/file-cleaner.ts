@@ -169,18 +169,34 @@ const EXTENDED_CLAUDE_PATTERNS = [
   },
 
   // IDE integration files - glob is perfect for path wildcards
+  // Note: Matches .vscode/claude* files starting with "claude" but NOT .vscode/include-claude* or other legitimate files
   {
-    pattern: "**/.vscode/*claude*",
+    pattern: "**/.vscode/claude*",
     type: "glob",
     reason: "IDE Claude integration file",
   },
   {
-    pattern: "**/.idea/*claude*",
+    pattern: "**/.vscode/.claude*",
     type: "glob",
     reason: "IDE Claude integration file",
   },
   {
-    pattern: "**/.eclipse/*claude*",
+    pattern: "**/.idea/claude*",
+    type: "glob",
+    reason: "IDE Claude integration file",
+  },
+  {
+    pattern: "**/.idea/.claude*",
+    type: "glob",
+    reason: "IDE Claude integration file",
+  },
+  {
+    pattern: "**/.eclipse/claude*",
+    type: "glob",
+    reason: "IDE Claude integration file",
+  },
+  {
+    pattern: "**/.eclipse/.claude*",
     type: "glob",
     reason: "IDE Claude integration file",
   },
@@ -214,7 +230,7 @@ const EXTENDED_CLAUDE_PATTERNS = [
  * Note: Extended glob operators like ?(pattern), @(pattern), etc. use parentheses and pipes,
  * but these are valid glob syntax and should not be rejected.
  */
-function validateGlobPattern(pattern: string): void {
+export function validateGlobPattern(pattern: string): void {
   // Check for regex-specific character classes like \d, \w, \s, etc.
   const regexCharClasses = /\\[dwsDWS]/;
   if (regexCharClasses.test(pattern)) {
@@ -246,7 +262,7 @@ function validateGlobPattern(pattern: string): void {
  * - More specific patterns should be listed before broader patterns
  * - Directory patterns match path components, not just basenames
  */
-class PatternMatcher {
+export class PatternMatcher {
   private patterns: Array<{ regex: RegExp; reason: string }>;
 
   constructor(patterns: readonly PatternConfig[]) {
@@ -826,6 +842,9 @@ export class FileCleaner {
       // Process files
       if (files.length > 0) {
         // Extract just the filename from files (BFG requirement)
+        // Note: basename matching means all files with the same name across different
+        // directories will be removed (e.g., both src/CLAUDE.md and docs/CLAUDE.md).
+        // This is the intended behavior - the tool removes all instances of these patterns.
         const fileNames = files.map((f) => basename(f.path));
         const uniqueFileNames = [...new Set(fileNames)]; // Remove duplicates
 
@@ -840,6 +859,9 @@ export class FileCleaner {
 
       // Process directories
       if (directories.length > 0) {
+        // Note: basename matching means all directories with the same name across different
+        // paths will be removed (e.g., both src/.claude/ and docs/.claude/).
+        // This is the intended behavior - the tool removes all instances of these patterns.
         const dirNames = directories.map((d) => basename(d.path));
         const uniqueDirNames = [...new Set(dirNames)]; // Remove duplicates
 
