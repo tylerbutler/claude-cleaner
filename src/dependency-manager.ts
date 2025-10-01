@@ -34,8 +34,6 @@ export class DependencyManager {
   }
 
   async ensureMiseInstalled(): Promise<void> {
-    const systemInfo = getSystemInfo();
-
     // Check if mise is already installed
     try {
       const result = await $`mise --version`
@@ -51,6 +49,8 @@ export class DependencyManager {
     } catch {
       // mise not found, continue with installation
     }
+
+    const systemInfo = getSystemInfo();
 
     // Skip installation on Windows - user must install mise manually
     if (systemInfo.platform === "win32") {
