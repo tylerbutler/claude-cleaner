@@ -267,17 +267,28 @@ export class DependencyManager {
 
         case "sd": {
           // Try mise exec first (for tools installed via mise)
+          this.logger.verbose(
+            `Checking sd with mise exec: ${miseCmd} exec -- sd --version`,
+          );
           let result = await $`${miseCmd} exec -- sd --version`
             .stdout("piped")
             .stderr("piped")
             .noThrow();
 
+          this.logger.verbose(
+            `mise exec sd result: code=${result.code}, stdout=${result.stdout}, stderr=${result.stderr}`,
+          );
+
           // Fall back to direct command if mise exec fails
           if (result.code !== 0) {
+            this.logger.verbose(`Falling back to direct sd command`);
             result = await $`sd --version`
               .stdout("piped")
               .stderr("piped")
               .noThrow();
+            this.logger.verbose(
+              `Direct sd result: code=${result.code}, stdout=${result.stdout}, stderr=${result.stderr}`,
+            );
           }
 
           if (result.code === 0) {
