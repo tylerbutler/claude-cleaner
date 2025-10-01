@@ -140,12 +140,14 @@ Options:
   --auto-install                    Automatically install required dependencies
   --files-only                      Only remove Claude files (skip commit cleaning)
   --commits-only                    Only clean commit messages (skip file removal)
-  --repo-path <path>                Path to Git repository (default: current directory)
   --branch <branch>                 Specify branch to clean (default: HEAD)
   --include-all-common-patterns     Include ALL known common Claude patterns (for complete cleanup)
   --include-dirs <name>             Add directory name to remove (matches directories with this name anywhere)
   --include-dirs-file <file>        Read directory names from file (one pattern per line)
   --no-defaults                     Don't include default Claude patterns (use only explicit patterns)
+
+Arguments:
+  <repo-path>                       Path to Git repository (REQUIRED)
 
 Commands:
   check-deps                        Check if all required dependencies are available
@@ -155,16 +157,16 @@ Commands:
 
 ```bash
 # Preview changes (default behavior)
-claude-cleaner
+claude-cleaner .
 
 # Execute cleaning after reviewing dry-run
-claude-cleaner --execute
+claude-cleaner . --execute
 
 # Clean specific repository
-claude-cleaner --execute --repo-path /path/to/repo
+claude-cleaner /path/to/repo --execute
 
 # Preview with verbose output
-claude-cleaner --verbose
+claude-cleaner . --verbose
 
 # Check what dependencies are needed
 claude-cleaner check-deps
@@ -174,16 +176,16 @@ claude-cleaner check-deps
 
 ```bash
 # Preview file removal only
-claude-cleaner --files-only --auto-install
+claude-cleaner . --files-only --auto-install
 
 # Execute file removal only
-claude-cleaner --files-only --execute --auto-install
+claude-cleaner . --files-only --execute --auto-install
 
 # Preview commit message cleaning only
-claude-cleaner --commits-only --auto-install
+claude-cleaner . --commits-only --auto-install
 
 # Execute commit cleaning on specific branch
-claude-cleaner --commits-only --execute --branch feature/my-branch --auto-install
+claude-cleaner . --commits-only --execute --branch feature/my-branch --auto-install
 ```
 
 ### Comprehensive Cleaning
@@ -320,12 +322,11 @@ claude-cleaner check-deps --auto-install
 #### "Not a Git repository" error
 
 ```bash
-# Ensure you're in a Git repository
-cd /path/to/your/git/repo
-claude-cleaner --auto-install
+# Specify a valid Git repository path
+claude-cleaner /path/to/git/repo --auto-install
 
-# Or specify path explicitly
-claude-cleaner --repo-path /path/to/git/repo --auto-install
+# For current directory
+claude-cleaner . --auto-install
 ```
 
 #### "Working tree not clean" error
