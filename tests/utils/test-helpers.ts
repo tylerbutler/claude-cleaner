@@ -210,8 +210,24 @@ export async function runWithPath(
     throw new Error("Command name is required");
   }
 
+  // On Windows, .bat and .cmd files must be executed through a shell
+  const isWindowsBatch = Deno.build.os === "windows" &&
+    (cmdName.endsWith(".bat") || cmdName.endsWith(".cmd"));
+
+  let finalCmd: string;
+  let finalArgs: string[];
+
+  if (isWindowsBatch) {
+    // Use cmd.exe to execute batch files on Windows
+    finalCmd = "cmd";
+    finalArgs = ["/c", cmdName, ...command.slice(1)];
+  } else {
+    finalCmd = cmdName;
+    finalArgs = command.slice(1);
+  }
+
   const options: Deno.CommandOptions = {
-    args: command.slice(1),
+    args: finalArgs,
     env: { ...Deno.env.toObject(), PATH: newPath },
     stdout: "piped",
     stderr: "piped",
@@ -221,7 +237,7 @@ export async function runWithPath(
     options.cwd = cwd;
   }
 
-  const proc = new Deno.Command(cmdName, options);
+  const proc = new Deno.Command(finalCmd, options);
 
   const result = await proc.output();
 
