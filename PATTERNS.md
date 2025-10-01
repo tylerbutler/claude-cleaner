@@ -18,6 +18,40 @@ Patterns use wildcards (`*`) to match variations:
 - `claude-session*` matches `claude-session`, `claude-session-123`, `claude-session.json`, etc.
 - `claude*.json` matches `claude.json`, `claude-config.json`, `claude-workspace.json`, etc.
 
+### Matching Examples
+
+**File Pattern Matching:**
+
+```
+Pattern: CLAUDE.md
+✅ Matches:   CLAUDE.md, docs/CLAUDE.md, src/utils/CLAUDE.md
+❌ No match:  CLAUDE.md.backup, MY-CLAUDE.md, claude.md
+```
+
+**Wildcard Pattern Matching:**
+
+```
+Pattern: claude-session*
+✅ Matches:   claude-session, claude-session-123, claude-session.json
+❌ No match:  session-claude, my-claude-session
+```
+
+**Directory Pattern Matching:**
+
+```
+Pattern: .claude/
+✅ Matches:   .claude/, src/.claude/, docs/.claude/
+❌ No match:  .claude2/, my.claude/, claude/
+```
+
+**Specific Path Matching:**
+
+```
+Pattern: .vscode/claude.json
+✅ Matches:   .vscode/claude.json (exact path only)
+❌ No match:  .vscode/claude.config.json, claude.json
+```
+
 ## Extended Pattern Categories
 
 ### Configuration Files

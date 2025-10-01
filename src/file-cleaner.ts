@@ -842,6 +842,9 @@ export class FileCleaner {
       // Process files
       if (files.length > 0) {
         // Extract just the filename from files (BFG requirement)
+        // Note: basename matching means all files with the same name across different
+        // directories will be removed (e.g., both src/CLAUDE.md and docs/CLAUDE.md).
+        // This is the intended behavior - the tool removes all instances of these patterns.
         const fileNames = files.map((f) => basename(f.path));
         const uniqueFileNames = [...new Set(fileNames)]; // Remove duplicates
 
@@ -856,6 +859,9 @@ export class FileCleaner {
 
       // Process directories
       if (directories.length > 0) {
+        // Note: basename matching means all directories with the same name across different
+        // paths will be removed (e.g., both src/.claude/ and docs/.claude/).
+        // This is the intended behavior - the tool removes all instances of these patterns.
         const dirNames = directories.map((d) => basename(d.path));
         const uniqueDirNames = [...new Set(dirNames)]; // Remove duplicates
 
