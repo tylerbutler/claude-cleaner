@@ -2,11 +2,12 @@
  * Unit tests for file cleaner module
  */
 
-import { assert } from "@std/assert";
+import { assert, assertThrows } from "@std/assert";
 import { exists } from "@std/fs";
 import { join } from "@std/path";
 import { createCleanRepo, createRepoWithClaudeFiles } from "../utils/fixtures.ts";
 import { assertValidGitRepo, getRepoFiles } from "../utils/test-helpers.ts";
+import { AppError } from "../../src/utils.ts";
 
 // These tests will be implemented when file-cleaner.ts is available
 // For now, they serve as specifications for the expected behavior
@@ -133,6 +134,244 @@ Deno.test("File Cleaner - Dry Run Mode", async (t) => {
       assert(await exists(join(repo.path, "CLAUDE.md")));
     } finally {
       await repo.cleanup();
+    }
+  });
+});
+
+Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
+  const { FileCleaner } = await import("../../src/file-cleaner.ts");
+  const { ConsoleLogger } = await import("../../src/utils.ts");
+
+  await t.step("should reject filenames with commas", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    // deno-lint-ignore no-explicit-any
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    try {
+      validateFn(["file,with,comma.txt"]);
+      assert(false, "Should have thrown error for comma in filename");
+    } catch (error) {
+      assert(error instanceof Error);
+      assert(error.message.includes("special character ','"));
+      assert(error.message.includes("file,with,comma.txt"));
+    }
+  });
+
+  await t.step("should reject filenames with opening brace", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    // deno-lint-ignore no-explicit-any
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    try {
+      validateFn(["file{1}.txt"]);
+      assert(false, "Should have thrown error for opening brace in filename");
+    } catch (error) {
+      assert(error instanceof Error);
+      assert(error.message.includes("special character '{'"));
+    }
+  });
+
+  await t.step("should reject filenames with closing brace", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    // deno-lint-ignore no-explicit-any
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    try {
+      validateFn(["file}1.txt"]);
+      assert(false, "Should have thrown error for closing brace in filename");
+    } catch (error) {
+      assert(error instanceof Error);
+      assert(error.message.includes("special character '}'"));
+    }
+  });
+
+  await t.step("should accept valid filenames", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    // deno-lint-ignore no-explicit-any
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    // Should not throw for valid filenames
+    validateFn(["CLAUDE.md", ".claude", "file.txt", "my-file_name.log"]);
+  });
+
+  await t.step("should accept filenames with spaces when allowSpaces is true", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    // deno-lint-ignore no-explicit-any
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    // Spaces are allowed when allowSpaces parameter is true (single file mode)
+    validateFn(["my file.txt"], true);
+  });
+
+  await t.step("should reject filenames with spaces when allowSpaces is false", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    // deno-lint-ignore no-explicit-any
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    // Spaces are rejected when batching multiple files (allowSpaces defaults to false)
+    assertThrows(
+      () => validateFn(["my file.txt", "another file.log"]),
+      AppError,
+      "special character ' '",
+    );
+  });
+
+  await t.step("should reject wildcard characters", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    // deno-lint-ignore no-explicit-any
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    // Wildcard characters should be rejected
+    assertThrows(() => validateFn(["file*.txt"]), AppError, "special character '*'");
+    assertThrows(() => validateFn(["file?.txt"]), AppError, "special character '?'");
+  });
+
+  await t.step("should reject shell metacharacters", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    // deno-lint-ignore no-explicit-any
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    // Shell metacharacters should be rejected
+    assertThrows(() => validateFn(["file;cmd.txt"]), AppError, "special character ';'");
+    assertThrows(() => validateFn(["file|cmd.txt"]), AppError, "special character '|'");
+    assertThrows(() => validateFn(["file&cmd.txt"]), AppError, "special character '&'");
+  });
+
+  await t.step("should provide actionable error messages", () => {
+    const logger = new ConsoleLogger(false);
+    const cleaner = new FileCleaner(
+      {
+        dryRun: true,
+        verbose: false,
+        repoPath: "/tmp/test",
+        createBackup: false,
+        includeDirectories: [],
+        excludeDefaults: false,
+        includeAllCommonPatterns: false,
+      },
+      logger,
+    );
+
+    // deno-lint-ignore no-explicit-any
+    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
+
+    try {
+      validateFn(["bad,file.txt"]);
+      assert(false, "Should have thrown error");
+    } catch (error) {
+      assert(error instanceof Error);
+      assert(
+        error.message.includes("Cannot batch BFG operations"),
+        "Should mention batching limitation",
+      );
+      assert(
+        error.message.includes("Remove this file manually using git commands"),
+        "Should provide actionable guidance",
+      );
     }
   });
 });

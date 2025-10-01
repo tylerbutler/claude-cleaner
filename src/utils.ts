@@ -10,7 +10,12 @@ export interface Logger {
 }
 
 export class ConsoleLogger implements Logger {
-  constructor(private verboseMode = false) {}
+  constructor(private verboseMode = false) {
+    // Check VERBOSE environment variable for CI debugging
+    if (Deno.env.get("VERBOSE") === "true") {
+      this.verboseMode = true;
+    }
+  }
 
   info(message: string): void {
     console.log(message);
@@ -164,12 +169,14 @@ export type ErrorCode =
   | "FILTER_BRANCH_FAILED"
   | "GET_BRANCH_FAILED"
   | "GIT_VALIDATION_FAILED"
+  | "INVALID_FILENAME"
   | "INVALID_OPTIONS"
   | "INVALID_PATTERN"
   | "JAVA_CONFIG_FAILED"
   | "JAVA_INSTALL_ERROR"
   | "JAVA_INSTALL_FAILED"
   | "MISE_INSTALL_FAILED"
+  | "MISE_NOT_FOUND"
   | "MISSING_DEPENDENCIES"
   | "NOT_GIT_REPO"
   | "REPO_PATH_REQUIRED"

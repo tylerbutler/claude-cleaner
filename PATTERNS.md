@@ -309,6 +309,54 @@ Use `--include-all-common-patterns` when:
 > [!WARNING]
 > The `--include-all-common-patterns` flag finds _many_ more files than standard mode. Always review the dry-run output first before using `--execute`.
 
+## Performance Optimization: Batched Operations
+
+Claude Cleaner optimizes performance by **batching multiple file and directory removals into a single BFG Repo-Cleaner invocation** rather than running BFG separately for each pattern. This significantly reduces execution time for repositories with multiple Claude artifacts.
+
+### How Batching Works
+
+**Single BFG Pass:**
+
+```bash
+# Instead of N separate BFG calls:
+bfg --delete-files CLAUDE.md repo.git
+bfg --delete-files claude.json repo.git
+bfg --delete-folders .claude repo.git
+
+# Claude Cleaner batches into one call:
+bfg --delete-files {CLAUDE.md,claude.json} --delete-folders .claude repo.git
+```
+
+### Filename Limitations for Batching
+
+Due to BFG's glob syntax requirements, certain special characters in filenames cannot be batched:
+
+**Restricted Characters:**
+
+- `,` (comma) - Pattern separator
+- `{` `}` (braces) - Pattern delimiter
+- `*` `?` (wildcards) - Glob metacharacters
+- `[` `]` (brackets) - Character class syntax
+- `;` `|` `&` (shell metacharacters)
+- `"` `'` (quotes)
+- `` (space) - Only when batching multiple patterns
+
+**Handling Special Cases:**
+
+- **Single files with spaces**: Processed without braces, spaces allowed
+- **Multiple files (batched)**: Spaces not allowed, will fail validation
+- **Invalid characters**: Tool will report error with actionable guidance
+
+**Example Error:**
+
+```
+Cannot batch BFG operations: filename 'my file.md' contains special character ' '
+that would break BFG glob syntax. Process this file separately or rename it without spaces.
+```
+
+> [!NOTE]
+> Standard Claude patterns (CLAUDE.md, .claude/, etc.) do not contain special characters and batch efficiently. Extended patterns may occasionally encounter files with special characters.
+
 ## Related Documentation
 
 - [README.md](README.md) - Main user documentation and quick start guide
