@@ -2,7 +2,7 @@
  * Unit tests for PatternMatcher class
  */
 
-import { assert, assertEquals, assertThrows } from "@std/assert";
+import { assert } from "@std/assert";
 
 // We need to access the private PatternMatcher class for testing
 // Import the file to trigger module initialization and expose the class through a test hook
