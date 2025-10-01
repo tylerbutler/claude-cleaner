@@ -9,8 +9,19 @@ interface PatternConfig {
   reason: string;
 }
 
+/**
+ * Extended glob pattern syntax reference:
+ * - ?(pattern): Matches zero or one occurrence
+ * - @(pattern): Matches exactly one occurrence
+ * - *(pattern): Matches zero or more occurrences
+ * - +(pattern): Matches one or more occurrences
+ * - !(pattern): Matches anything except the pattern
+ * - {a,b}: Matches either 'a' or 'b'
+ * - **: Matches zero or more directories (globstar)
+ */
+
 // Claude file patterns using hybrid approach (glob for readability, regex for flexibility)
-const EXTENDED_CLAUDE_PATTERNS: PatternConfig[] = [
+const EXTENDED_CLAUDE_PATTERNS = [
   // Configuration files - regex for proper word boundary
   {
     pattern: /^\.?claude[-_.].*\.(json|yaml|yml|toml|ini|config)$/i,
@@ -145,24 +156,14 @@ const EXTENDED_CLAUDE_PATTERNS: PatternConfig[] = [
     reason: "Claude numbered/versioned file",
   },
 
-  // OS-specific files - glob is readable here
+  // OS-specific files - glob is readable here (consolidated overlapping patterns)
   {
-    pattern: ".claude*.DS_Store",
+    pattern: "?(.)claude*.DS_Store",
     type: "glob",
     reason: "Claude OS-specific file",
   },
   {
-    pattern: "claude*.DS_Store",
-    type: "glob",
-    reason: "Claude OS-specific file",
-  },
-  {
-    pattern: ".claude*.Thumbs.db",
-    type: "glob",
-    reason: "Claude OS-specific file",
-  },
-  {
-    pattern: "claude*.Thumbs.db",
+    pattern: "?(.)claude*.Thumbs.db",
     type: "glob",
     reason: "Claude OS-specific file",
   },
@@ -205,20 +206,66 @@ const EXTENDED_CLAUDE_PATTERNS: PatternConfig[] = [
     type: "glob",
     reason: "Claude directory (extended pattern)",
   },
-];
+] as const satisfies readonly PatternConfig[];
 
-// Hybrid pattern matcher: uses glob for simple patterns, regex for complex ones
+/**
+ * Validates that a glob pattern doesn't contain regex-specific syntax that could cause issues.
+ * Glob patterns should use glob syntax (*, ?, [], {}), not regex syntax (\d, \w, etc.)
+ * Note: Extended glob operators like ?(pattern), @(pattern), etc. use parentheses and pipes,
+ * but these are valid glob syntax and should not be rejected.
+ */
+function validateGlobPattern(pattern: string): void {
+  // Check for regex-specific character classes like \d, \w, \s, etc.
+  const regexCharClasses = /\\[dwsDWS]/;
+  if (regexCharClasses.test(pattern)) {
+    throw new AppError(
+      `Invalid glob pattern contains regex character classes: ${pattern}`,
+      "INVALID_PATTERN",
+    );
+  }
+
+  // Check for regex-specific anchors (^ at start, $ at end) outside of bracket expressions
+  // Extended glob uses @ and ! as valid operators, so we don't check for those
+  if (/^\^/.test(pattern) || /\$$/.test(pattern)) {
+    throw new AppError(
+      `Invalid glob pattern contains regex anchors: ${pattern}`,
+      "INVALID_PATTERN",
+    );
+  }
+}
+
+/**
+ * Hybrid pattern matcher: uses glob patterns for simple cases and RegExp for complex patterns.
+ *
+ * Pattern matching behavior:
+ * - Patterns are evaluated in order (first match wins for getReason())
+ * - Glob patterns are converted to case-insensitive RegExp
+ * - All regex patterns should include the 'i' flag for consistency
+ *
+ * Pattern precedence:
+ * - More specific patterns should be listed before broader patterns
+ * - Directory patterns match path components, not just basenames
+ */
 class PatternMatcher {
   private patterns: Array<{ regex: RegExp; reason: string }>;
 
-  constructor(patterns: PatternConfig[]) {
+  constructor(patterns: readonly PatternConfig[]) {
     this.patterns = patterns.map(({ pattern, type, reason }) => {
       let regex: RegExp;
 
       if (type === "glob") {
-        // Convert glob to RegExp and make it case-insensitive
-        const baseRegex = globToRegExp(pattern as string, { extended: true, globstar: true });
-        regex = new RegExp(baseRegex.source, baseRegex.flags + "i");
+        const globPattern = pattern as string;
+        // Validate glob pattern doesn't contain regex syntax
+        validateGlobPattern(globPattern);
+
+        // Convert glob to RegExp and ensure case-insensitivity
+        const baseRegex = globToRegExp(globPattern, { extended: true, globstar: true });
+
+        // Check if 'i' flag already exists to prevent duplication
+        const hasInsensitiveFlag = baseRegex.flags.includes("i");
+        regex = hasInsensitiveFlag
+          ? baseRegex
+          : new RegExp(baseRegex.source, baseRegex.flags + "i");
       } else {
         // Use RegExp directly (already case-insensitive with /i flag)
         regex = pattern as RegExp;
@@ -228,10 +275,20 @@ class PatternMatcher {
     });
   }
 
+  /**
+   * Tests if a path matches any of the configured patterns.
+   * @param path The file path to test
+   * @returns true if any pattern matches the path
+   */
   matches(path: string): boolean {
     return this.patterns.some(({ regex }) => regex.test(path));
   }
 
+  /**
+   * Gets the reason string for the first pattern that matches the given path.
+   * @param path The file path to get a reason for
+   * @returns The reason string if a match is found, undefined otherwise
+   */
   getReason(path: string): string | undefined {
     const match = this.patterns.find(({ regex }) => regex.test(path));
     return match?.reason;
@@ -559,27 +616,29 @@ export class FileCleaner {
   }
 
   private isAllCommonPatternsFile(relativePath: string): boolean {
-    const fileName = basename(relativePath);
-
     // All current default patterns
     if (this.isClaudeFile(relativePath)) return true;
 
-    // Check if path matches any extended glob pattern
-    if (extendedPatternMatcher.matches(relativePath)) return true;
-
-    // Check if just the filename matches (for files in subdirectories)
-    if (extendedPatternMatcher.matches(fileName)) return true;
-
-    // EXCLUDE simple generic files that should NOT be caught
-    if (fileName.match(/^claude\.txt$/i)) return false;
-    if (fileName.match(/^include-claude.*$/i)) return false;
+    // Check if path or filename matches any extended glob pattern
+    // Use short-circuit OR to avoid redundant checks when full path matches
     if (
-      fileName.match(/^.*claude.*\.txt$/i) &&
-      !fileName.match(/^\.?claude[-_]/i)
+      extendedPatternMatcher.matches(relativePath) ||
+      extendedPatternMatcher.matches(basename(relativePath))
     ) {
-      return false;
+      // EXCLUDE simple generic files that should NOT be caught
+      const fileName = basename(relativePath);
+      if (fileName.match(/^claude\.txt$/i)) return false;
+      if (fileName.match(/^include-claude.*$/i)) return false;
+      if (
+        fileName.match(/^.*claude.*\.txt$/i) &&
+        !fileName.match(/^\.?claude[-_]/i)
+      ) {
+        return false;
+      }
+      if (fileName.match(/^claudelike\..*$/i)) return false;
+
+      return true;
     }
-    if (fileName.match(/^claudelike\..*$/i)) return false;
 
     return false;
   }
