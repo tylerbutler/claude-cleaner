@@ -6,45 +6,50 @@ import { assert, assertEquals } from "@std/assert";
 import { exists } from "@std/fs";
 import { join } from "@std/path";
 import { $ } from "dax";
-import { createTestRepo } from "../utils/fixtures.ts";
+import { createMinimalRepo } from "../utils/fixtures.ts";
 
 Deno.test("Integration - Batched BFG Operations", async (t) => {
   await t.step("should batch multiple Claude files into single BFG command", async () => {
-    const repo = await createTestRepo();
+    const repo = await createMinimalRepo();
 
     try {
-      // Create multiple Claude files
+      // Create multiple Claude files and directories (using standard patterns)
       await $`git -C ${repo.path} checkout -b test-branch`.quiet();
       await Deno.writeTextFile(join(repo.path, "CLAUDE.md"), "# Claude");
-      await Deno.writeTextFile(join(repo.path, "claude.json"), "{}");
-      await Deno.writeTextFile(join(repo.path, "claude-config.json"), "{}");
+      await Deno.mkdir(join(repo.path, ".claude"));
+      await Deno.writeTextFile(join(repo.path, ".claude", "config.json"), "{}");
+      await Deno.mkdir(join(repo.path, "claudedocs"));
+      await Deno.writeTextFile(join(repo.path, "claudedocs", "notes.md"), "# Notes");
       await $`git -C ${repo.path} add .`.quiet();
       await $`git -C ${repo.path} commit -m "Add Claude files"`.quiet();
 
-      // Verify files exist
+      // Verify files exist before cleaning
       assert(await exists(join(repo.path, "CLAUDE.md")));
-      assert(await exists(join(repo.path, "claude.json")));
-      assert(await exists(join(repo.path, "claude-config.json")));
+      assert(await exists(join(repo.path, ".claude")));
+      assert(await exists(join(repo.path, "claudedocs")));
 
       // Run cleaning with execute flag
       const result =
         await $`deno run --allow-all src/main.ts --files-only --execute --auto-install ${repo.path}`
           .cwd(Deno.cwd());
 
-      // Verify files are removed from working tree
-      assert(!await exists(join(repo.path, "CLAUDE.md")));
-      assert(!await exists(join(repo.path, "claude.json")));
-      assert(!await exists(join(repo.path, "claude-config.json")));
-
-      // Verify cleanup completed
+      // Verify cleanup completed successfully
       assertEquals(result.code, 0);
+
+      // Reset working tree to match new Git history
+      await $`git -C ${repo.path} reset --hard HEAD`.quiet();
+
+      // Verify files are removed from working tree after reset
+      assert(!await exists(join(repo.path, "CLAUDE.md")));
+      assert(!await exists(join(repo.path, ".claude")));
+      assert(!await exists(join(repo.path, "claudedocs")));
     } finally {
       await repo.cleanup();
     }
   });
 
   await t.step("should handle single file with spaces in filename", async () => {
-    const repo = await createTestRepo();
+    const repo = await createMinimalRepo();
 
     try {
       // Create a Claude file with spaces (using .claude directory which is standard pattern)
@@ -54,7 +59,7 @@ Deno.test("Integration - Batched BFG Operations", async (t) => {
       await $`git -C ${repo.path} add .`.quiet();
       await $`git -C ${repo.path} commit -m "Add Claude dir with spaces"`.quiet();
 
-      // Verify directory exists
+      // Verify directory exists before cleaning
       assert(await exists(join(repo.path, ".claude", "file with spaces.txt")));
 
       // Run cleaning with execute flag
@@ -62,18 +67,21 @@ Deno.test("Integration - Batched BFG Operations", async (t) => {
         await $`deno run --allow-all src/main.ts --files-only --execute --auto-install ${repo.path}`
           .cwd(Deno.cwd());
 
-      // Verify .claude directory is removed
-      assert(!await exists(join(repo.path, ".claude")));
-
-      // Verify cleanup completed
+      // Verify cleanup completed successfully
       assertEquals(result.code, 0);
+
+      // Reset working tree to match new Git history
+      await $`git -C ${repo.path} reset --hard HEAD`.quiet();
+
+      // Verify .claude directory is removed from working tree after reset
+      assert(!await exists(join(repo.path, ".claude")));
     } finally {
       await repo.cleanup();
     }
   });
 
   await t.step("should reject batching files with spaces", async () => {
-    const repo = await createTestRepo();
+    const repo = await createMinimalRepo();
 
     try {
       // Create multiple files where one has spaces - this requires extended patterns
@@ -100,7 +108,7 @@ Deno.test("Integration - Batched BFG Operations", async (t) => {
   });
 
   await t.step("should reject files with glob special characters", async () => {
-    const repo = await createTestRepo();
+    const repo = await createMinimalRepo();
 
     try {
       // Create a file with glob special characters (if possible in the filesystem)
