@@ -60,10 +60,8 @@ Deno.test("Cross-platform - Path Handling", async (t) => {
   });
 });
 
-// TODO: Fix command execution tests on Windows - currently failing due to command execution issues
 Deno.test({
   name: "Cross-platform - Command Execution",
-  ignore: currentOS === "windows",
   fn: async (t) => {
     await t.step("should execute commands on Windows", async () => {
       if (currentOS === "windows") {
@@ -213,10 +211,8 @@ Deno.test("Cross-platform - Git Operations", async (t) => {
   });
 });
 
-// TODO: Fix tool dependency tests on Windows - currently failing due to mock tool execution issues
 Deno.test({
   name: "Cross-platform - Tool Dependencies",
-  ignore: currentOS === "windows",
   fn: async (t) => {
     await t.step("should handle Java on different platforms", async () => {
       const javaScript = currentOS === "windows"
