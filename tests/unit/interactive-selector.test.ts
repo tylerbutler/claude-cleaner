@@ -4,8 +4,7 @@
  */
 
 import { assert, assertEquals, assertExists } from "@std/assert";
-import { assertSpyCalls, spy, stub } from "@std/testing/mock";
-import type { Checkbox } from "@cliffy/prompt";
+import { assertSpyCalls, stub } from "@std/testing/mock";
 import {
   displaySelectionSummary,
   type FileEntry,
@@ -807,9 +806,7 @@ Deno.test("displaySelectionSummary - With selections", async (t) => {
     assert(logger.messages.some((msg) => msg.includes("file2.ts")));
 
     // Should show commit info only for file1
-    const commitMessages = logger.messages.filter((msg) =>
-      msg.includes("First appeared")
-    );
+    const commitMessages = logger.messages.filter((msg) => msg.includes("First appeared"));
     assertEquals(commitMessages.length, 1);
   });
 
@@ -861,9 +858,7 @@ Deno.test("displaySelectionSummary - Edge cases", async (t) => {
     displaySelectionSummary(["nonexistent.ts"], files, logger);
 
     // Should not crash and should show 0 files
-    const filtered = files.filter((f) =>
-      ["nonexistent.ts"].includes(f.path)
-    );
+    const filtered = files.filter((f) => ["nonexistent.ts"].includes(f.path));
     assertEquals(filtered.length, 0);
   });
 });

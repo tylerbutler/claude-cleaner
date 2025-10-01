@@ -2,11 +2,7 @@ import { Command } from "@cliffy/command";
 import { CommitCleaner } from "./commit-cleaner.ts";
 import { DependencyManager } from "./dependency-manager.ts";
 import { FileCleaner } from "./file-cleaner.ts";
-import {
-  displaySelectionSummary,
-  type FileEntry,
-  selectFilesToClean,
-} from "./interactive-selector.ts";
+import { displaySelectionSummary, selectFilesToClean } from "./interactive-selector.ts";
 import {
   AppError,
   checkForMissingDependencies,
