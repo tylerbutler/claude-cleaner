@@ -34,6 +34,9 @@ export class DependencyManager {
   }
 
   async ensureMiseInstalled(): Promise<void> {
+    const systemInfo = getSystemInfo();
+
+    // Check if mise is already installed
     try {
       const result = await $`mise --version`
         .stdout("piped")
@@ -49,8 +52,21 @@ export class DependencyManager {
       // mise not found, continue with installation
     }
 
+    // Skip installation on Windows - user must install mise manually
+    if (systemInfo.platform === "win32") {
+      this.logger.warn(
+        "mise is not installed. On Windows, automatic installation is not supported.",
+      );
+      this.logger.warn(
+        "Please install mise manually from https://mise.jdx.dev/installing-mise.html",
+      );
+      this.logger.warn(
+        "Or install dependencies directly: Java 17+, sd (https://github.com/chmln/sd)",
+      );
+      return;
+    }
+
     this.logger.info("Installing mise...");
-    const systemInfo = getSystemInfo();
 
     if (systemInfo.platform === "linux" || systemInfo.platform === "darwin") {
       const installResult = await $`curl -fsSL https://mise.run | sh`.noThrow();
