@@ -15,11 +15,11 @@
     }],
     ["@semantic-release/github", {
       "assets": [
-        {"path": "dist/claude-cleaner-linux-x64"},
-        {"path": "dist/claude-cleaner-linux-arm64"},
-        {"path": "dist/claude-cleaner-macos-x64"},
-        {"path": "dist/claude-cleaner-macos-arm64"},
-        {"path": "dist/claude-cleaner-windows-x64.exe"}
+        { "path": "dist/claude-cleaner-linux-x64" },
+        { "path": "dist/claude-cleaner-linux-arm64" },
+        { "path": "dist/claude-cleaner-macos-x64" },
+        { "path": "dist/claude-cleaner-macos-arm64" },
+        { "path": "dist/claude-cleaner-windows-x64.exe" }
       ]
     }]
   ]

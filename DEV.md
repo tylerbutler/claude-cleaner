@@ -267,6 +267,7 @@ All binaries are attached to the GitHub release and the package is published to 
 ### Release Configuration
 
 The release process is configured via:
+
 - `.releaserc.json` - semantic-release plugin configuration
 - `package.json` - npm dependencies for semantic-release
 - `.github/workflows/release.yml` - GitHub Actions workflow
