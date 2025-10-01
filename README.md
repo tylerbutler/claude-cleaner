@@ -441,7 +441,7 @@ git clone <repository-url>
 
 ## Development
 
-See [DEV.md](DEV.md) for development setup, testing guidelines, and contribution instructions.
+See [DEV.md](DEV.md) for development setup, testing guidelines, release process, and contribution instructions.
 
 ## Contributing
 
