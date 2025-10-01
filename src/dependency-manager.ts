@@ -415,11 +415,17 @@ export class DependencyManager {
       if (isWindows && command === "mise") {
         const homeDir = systemInfo.homeDir || "";
         const commonPaths = [
-          join(homeDir, "AppData", "Local", "mise", "shims", "mise.exe"),
-          join(homeDir, ".local", "bin", "mise.exe"),
+          join(homeDir, "AppData", "Local", "mise", "shims", "mise"),
+          join(homeDir, "AppData", "Local", "mise", "bin", "mise.exe"),
+          join(homeDir, ".local", "bin", "mise"),
         ];
 
+        this.logger.verbose(
+          `Checking Windows fallback paths: ${commonPaths.join(", ")}`,
+        );
+
         for (const checkPath of commonPaths) {
+          this.logger.verbose(`Checking if exists: ${checkPath}`);
           if (await fileExists(checkPath)) {
             this.logger.verbose(`Found mise at fallback path: ${checkPath}`);
             return checkPath;
