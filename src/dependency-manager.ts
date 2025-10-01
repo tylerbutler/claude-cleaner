@@ -320,14 +320,14 @@ export class DependencyManager {
         case "mise": {
           // misePath is already set at the start of checkDependency()
           this.logger.verbose(
-            `Checking mise with: ${miseCmd} --version`,
+            `Checking mise with: ${miseCmd} version`,
           );
-          const result = await $`${miseCmd} --version`
+          const result = await $`${miseCmd} version`
             .stdout("piped")
             .stderr("piped")
             .noThrow();
           this.logger.verbose(
-            `mise --version result: code=${result.code}, stdout=${result.stdout}, stderr=${result.stderr}, misePath=${this.misePath}`,
+            `mise version result: code=${result.code}, stdout=${result.stdout}, stderr=${result.stderr}, misePath=${this.misePath}`,
           );
           if (result.code === 0) {
             return {
