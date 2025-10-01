@@ -139,7 +139,7 @@ export class DependencyManager {
     this.logger.info("Installing sd via mise...");
 
     try {
-      const installResult = await $`mise install sd@latest`
+      const installResult = await $`mise install sd`
         .stdout("piped")
         .stderr("piped")
         .noThrow();
@@ -151,7 +151,7 @@ export class DependencyManager {
         );
       }
 
-      const useResult = await $`mise use -g sd@latest`
+      const useResult = await $`mise use -g sd`
         .stdout("piped")
         .stderr("piped")
         .noThrow();
