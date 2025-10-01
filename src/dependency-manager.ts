@@ -22,6 +22,7 @@ export interface DependencyCheckResult {
 export class DependencyManager {
   private readonly cacheDir: string;
   private readonly bfgJarPath: string;
+  private misePath: string | undefined;
 
   constructor(
     private readonly logger: Logger,
@@ -34,23 +35,25 @@ export class DependencyManager {
   }
 
   async ensureMiseInstalled(): Promise<void> {
-    try {
-      const result = await $`mise --version`
-        .stdout("piped")
-        .stderr("piped")
-        .noThrow();
-      if (result.code === 0) {
-        this.logger.verbose(
-          `mise is already installed: ${result.stdout.trim()}`,
-        );
-        return;
-      }
-    } catch {
-      // mise not found, continue with installation
+    // Check if mise is already installed and get its path
+    const existingPath = await this.findExecutablePath("mise");
+    if (existingPath) {
+      this.misePath = existingPath;
+      this.logger.verbose(`mise is already installed at: ${existingPath}`);
+      return;
+    }
+
+    const systemInfo = getSystemInfo();
+
+    // Skip installation on Windows - user must install mise manually
+    if (systemInfo.platform === "win32") {
+      throw new AppError(
+        "mise is not installed. On Windows, automatic installation is not supported. Please install mise manually from https://mise.jdx.dev/installing-mise.html or install dependencies directly: Java 17+, sd (https://github.com/chmln/sd)",
+        "MISE_NOT_FOUND",
+      );
     }
 
     this.logger.info("Installing mise...");
-    const systemInfo = getSystemInfo();
 
     if (systemInfo.platform === "linux" || systemInfo.platform === "darwin") {
       const installResult = await $`curl -fsSL https://mise.run | sh`.noThrow();
@@ -62,10 +65,13 @@ export class DependencyManager {
         );
       }
 
+      // Set mise path to standard installation location
+      this.misePath = join(systemInfo.homeDir || "/tmp", ".local", "bin", "mise");
+
       // Add mise to PATH for this session
-      const misePath = join(systemInfo.homeDir || "/tmp", ".local", "bin");
+      const miseDir = join(systemInfo.homeDir || "/tmp", ".local", "bin");
       const currentPath = Deno.env.get("PATH") || "";
-      Deno.env.set("PATH", `${misePath}:${currentPath}`);
+      Deno.env.set("PATH", `${miseDir}:${currentPath}`);
 
       this.logger.info("mise installed successfully");
     } else {
@@ -80,8 +86,10 @@ export class DependencyManager {
     this.logger.info("Installing Java via mise...");
 
     try {
+      const miseCmd = this.misePath || "mise";
+
       // Install Java 17 (LTS version that works well with BFG)
-      const installResult = await $`mise install java@17`
+      const installResult = await $`${miseCmd} install java@17`
         .stdout("piped")
         .stderr("piped")
         .noThrow();
@@ -94,7 +102,7 @@ export class DependencyManager {
       }
 
       // Use Java globally
-      const useResult = await $`mise use -g java@17`
+      const useResult = await $`${miseCmd} use -g java@17`
         .stdout("piped")
         .stderr("piped")
         .noThrow();
@@ -123,25 +131,38 @@ export class DependencyManager {
     this.logger.info("Installing sd via mise...");
 
     try {
-      const installResult = await $`mise install sd@latest`
+      const miseCmd = this.misePath || "mise";
+      this.logger.verbose(`Using mise command: ${miseCmd}`);
+
+      const installResult = await $`${miseCmd} install sd`
         .stdout("piped")
         .stderr("piped")
         .noThrow();
+
+      this.logger.verbose(
+        `mise install sd result: code=${installResult.code}, stdout=${installResult.stdout}, stderr=${installResult.stderr}`,
+      );
+
       if (installResult.code !== 0) {
         throw new AppError(
-          "Failed to install sd via mise",
+          `Failed to install sd via mise: ${installResult.stderr}`,
           "SD_INSTALL_FAILED",
           new Error(installResult.stderr),
         );
       }
 
-      const useResult = await $`mise use -g sd@latest`
+      const useResult = await $`${miseCmd} use -g sd`
         .stdout("piped")
         .stderr("piped")
         .noThrow();
+
+      this.logger.verbose(
+        `mise use -g sd result: code=${useResult.code}, stderr=${useResult.stderr}`,
+      );
+
       if (useResult.code !== 0) {
         throw new AppError(
-          "Failed to configure sd globally",
+          `Failed to configure sd globally: ${useResult.stderr}`,
           "SD_CONFIG_FAILED",
           new Error(useResult.stderr),
         );
@@ -208,12 +229,29 @@ export class DependencyManager {
 
   async checkDependency(tool: string): Promise<DependencyCheckResult> {
     try {
+      // Try to find mise path if not already set (needed for all tools)
+      if (!this.misePath) {
+        this.misePath = (await this.findExecutablePath("mise")) || undefined;
+      }
+
+      const miseCmd = this.misePath || "mise";
+
       switch (tool) {
         case "java": {
-          const result = await $`java -version`
+          // Try mise exec first (for tools installed via mise)
+          let result = await $`${miseCmd} exec -- java -version`
             .stdout("piped")
             .stderr("piped")
             .noThrow();
+
+          // Fall back to direct command if mise exec fails
+          if (result.code !== 0) {
+            result = await $`java -version`
+              .stdout("piped")
+              .stderr("piped")
+              .noThrow();
+          }
+
           if (result.code === 0) {
             // Java version output goes to stderr
             const versionMatch = result.stderr.match(/version "([^"]+)"/);
@@ -228,16 +266,39 @@ export class DependencyManager {
         }
 
         case "sd": {
-          const result = await $`sd --version`
+          // Try mise exec first (for tools installed via mise)
+          this.logger.verbose(
+            `Checking sd with mise exec: ${miseCmd} exec -- sd --version`,
+          );
+          let result = await $`${miseCmd} exec -- sd --version`
             .stdout("piped")
             .stderr("piped")
             .noThrow();
+
+          this.logger.verbose(
+            `mise exec sd result: code=${result.code}, stdout=${result.stdout}, stderr=${result.stderr}`,
+          );
+
+          // Fall back to direct command if mise exec fails
+          if (result.code !== 0) {
+            this.logger.verbose(`Falling back to direct sd command`);
+            result = await $`sd --version`
+              .stdout("piped")
+              .stderr("piped")
+              .noThrow();
+            this.logger.verbose(
+              `Direct sd result: code=${result.code}, stdout=${result.stdout}, stderr=${result.stderr}`,
+            );
+          }
+
           if (result.code === 0) {
+            const sdPath = await this.findExecutablePath("sd");
             return {
               tool,
               available: true,
               version: result.stdout.trim(),
-              path: (await this.findExecutablePath("sd")) || undefined,
+              // On Windows, sd may not be in PATH but works via mise exec
+              path: sdPath || undefined,
             };
           }
           return { tool, available: false, error: result.stderr };
@@ -257,16 +318,23 @@ export class DependencyManager {
         }
 
         case "mise": {
-          const result = await $`mise --version`
+          // misePath is already set at the start of checkDependency()
+          this.logger.verbose(
+            `Checking mise with: ${miseCmd} version`,
+          );
+          const result = await $`${miseCmd} version`
             .stdout("piped")
             .stderr("piped")
             .noThrow();
+          this.logger.verbose(
+            `mise version result: code=${result.code}, stdout=${result.stdout}, stderr=${result.stderr}, misePath=${this.misePath}`,
+          );
           if (result.code === 0) {
             return {
               tool,
               available: true,
               version: result.stdout.trim(),
-              path: (await this.findExecutablePath("mise")) || undefined,
+              path: this.misePath,
             };
           }
           return { tool, available: false, error: result.stderr };
@@ -306,10 +374,29 @@ export class DependencyManager {
     await this.installJava();
     await this.installSd();
 
+    // Regenerate shims to make tools available in PATH
+    await this.reshimMise();
+
     // Download BFG JAR
     await this.downloadBfgJar();
 
     this.logger.info("All dependencies installed successfully");
+  }
+
+  private async reshimMise(): Promise<void> {
+    try {
+      const miseCmd = this.misePath || "mise";
+      const result = await $`${miseCmd} reshim`
+        .stdout("piped")
+        .stderr("piped")
+        .noThrow();
+      if (result.code !== 0) {
+        this.logger.warn(`mise reshim returned non-zero exit code: ${result.stderr}`);
+      }
+    } catch (error) {
+      // Non-fatal - log warning but continue
+      this.logger.warn(`Failed to reshim mise: ${error}`);
+    }
   }
 
   getBfgJarPath(): string {
@@ -320,16 +407,57 @@ export class DependencyManager {
     command: string,
   ): Promise<string | undefined> {
     try {
-      const result = await $`which ${command}`
+      const systemInfo = getSystemInfo();
+      const isWindows = systemInfo.platform === "win32";
+
+      // Use 'where' on Windows, 'which' on Unix-like systems
+      const findCommand = isWindows ? "where" : "which";
+      const result = await $`${findCommand} ${command}`
         .stdout("piped")
         .stderr("piped")
         .noThrow();
+
+      this.logger.verbose(
+        `findExecutablePath(${command}): code=${result.code}, stdout=${result.stdout}, stderr=${result.stderr}`,
+      );
+
       if (result.code === 0) {
-        return result.stdout.trim();
+        // 'where' on Windows can return multiple paths, take the first one
+        const output = result.stdout.trim();
+        const path = isWindows ? output.split("\n")[0]?.trim() : output;
+        this.logger.verbose(`Found ${command} at: ${path}`);
+        return path;
       }
-    } catch {
-      // Ignore errors
+
+      // On Windows, if 'where' fails, try common mise installation locations
+      if (isWindows && command === "mise") {
+        const homeDir = systemInfo.homeDir || "";
+        // According to mise docs, Windows default is %LOCALAPPDATA%\mise\mise
+        const commonPaths = [
+          join(homeDir, "AppData", "Local", "mise", "mise"),
+          join(homeDir, "AppData", "Local", "mise", "mise.exe"),
+          join(homeDir, ".local", "bin", "mise"),
+          join(homeDir, ".local", "bin", "mise.exe"),
+        ];
+
+        this.logger.verbose(
+          `Checking Windows fallback paths: ${commonPaths.join(", ")}`,
+        );
+
+        for (const checkPath of commonPaths) {
+          this.logger.verbose(`Checking if exists: ${checkPath}`);
+          if (await fileExists(checkPath)) {
+            this.logger.verbose(`Found mise at fallback path: ${checkPath}`);
+            return checkPath;
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.verbose(
+        `findExecutablePath(${command}) failed: ${error}`,
+      );
     }
+    this.logger.verbose(`findExecutablePath(${command}): not found`);
     return undefined;
   }
 }
