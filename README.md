@@ -439,6 +439,72 @@ git clone <repository-url>
 **Q: Can I use it in CI/CD pipelines?**\
 **A:** It should work but has not been tested. Use `--auto-install` for dependency management and ensure proper permissions are configured.
 
+## Release Process
+
+This project uses [semantic-release](https://semantic-release.gitbook.io/) with [conventional commits](https://www.conventionalcommits.org/) for automated versioning and releases.
+
+### Conventional Commit Format
+
+All commits must follow the conventional commit format:
+
+- `feat: description` - New features (minor version bump)
+- `fix: description` - Bug fixes (patch version bump)
+- `feat!: description` or `BREAKING CHANGE:` - Breaking changes (major version bump in 1.x+, minor in 0.x)
+- `chore:`, `docs:`, `test:`, `refactor:` - No release (maintenance commits)
+
+**Examples:**
+
+```bash
+# Patch release (0.2.0 → 0.2.1)
+git commit -m "fix: handle symlinks correctly in directory scanning"
+
+# Minor release (0.2.0 → 0.3.0)
+git commit -m "feat: add interactive mode for file selection"
+
+# Breaking change in pre-1.0 (0.2.0 → 0.3.0)
+git commit -m "feat!: rename --all flag to --include-all
+
+BREAKING CHANGE: The --all flag has been renamed to --include-all for clarity"
+
+# No release
+git commit -m "docs: improve README examples"
+git commit -m "chore: update dependencies"
+```
+
+### Creating a Release
+
+1. **Ensure all commits** since last release follow conventional commit format
+
+2. **Preview the release** (recommended):
+   - Go to [Actions → Release](../../actions/workflows/release.yml)
+   - Click "Run workflow"
+   - Check "Dry run" checkbox
+   - Click "Run workflow" button
+   - Review the logs to see what version would be released
+
+3. **Create the release**:
+   - Go to [Actions → Release](../../actions/workflows/release.yml)
+   - Click "Run workflow"
+   - Leave "Dry run" unchecked
+   - Click "Run workflow" button
+
+4. **semantic-release will automatically**:
+   - Analyze commits to determine version bump
+   - Update `deno.json` with new version
+   - Generate/update `CHANGELOG.md`
+   - Publish package to [JSR](https://jsr.io/@tylerbu/claude-cleaner)
+   - Create [GitHub release](../../releases) with binaries for all platforms
+   - Commit `CHANGELOG.md` and `deno.json` back to the repository
+   - Create git tag for the release
+
+### What Gets Released
+
+- **Linux**: x86_64, aarch64
+- **macOS**: x86_64 (Intel), aarch64 (Apple Silicon)
+- **Windows**: x86_64
+
+All binaries are attached to the GitHub release and the package is published to JSR.
+
 ## Development
 
 See [DEV.md](DEV.md) for development setup, testing guidelines, and contribution instructions.

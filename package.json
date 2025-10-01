@@ -1,0 +1,11 @@
+{
+  "name": "@tylerbu/claude-cleaner",
+  "private": true,
+  "devDependencies": {
+    "semantic-release": "^24.0.0",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^11.0.0",
+    "@sebbo2002/semantic-release-jsr": "^2.0.0"
+  }
+}
