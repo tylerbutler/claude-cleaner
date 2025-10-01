@@ -4,7 +4,7 @@
 
 import { assert, assertEquals } from "@std/assert";
 import { exists } from "@std/fs";
-import { join, normalize, resolve } from "@std/path";
+import { dirname, join, normalize, resolve } from "@std/path";
 import { createMockTool, createTestRepo, runWithPath } from "../utils/test-helpers.ts";
 
 const currentOS = Deno.build.os;
@@ -60,10 +60,8 @@ Deno.test("Cross-platform - Path Handling", async (t) => {
   });
 });
 
-// TODO: Fix command execution tests on Windows - currently failing due to command execution issues
 Deno.test({
   name: "Cross-platform - Command Execution",
-  ignore: currentOS === "windows",
   fn: async (t) => {
     await t.step("should execute commands on Windows", async () => {
       if (currentOS === "windows") {
@@ -92,7 +90,7 @@ Deno.test({
       try {
         const result = await runWithPath(
           [currentOS === "windows" ? "test-tool.bat" : "test-tool"],
-          [mockTool.path.replace(`/${mockTool.path.split("/").pop()}`, "")],
+          [dirname(mockTool.path)],
         );
 
         assertEquals(result.code, 0);
@@ -213,10 +211,8 @@ Deno.test("Cross-platform - Git Operations", async (t) => {
   });
 });
 
-// TODO: Fix tool dependency tests on Windows - currently failing due to mock tool execution issues
 Deno.test({
   name: "Cross-platform - Tool Dependencies",
-  ignore: currentOS === "windows",
   fn: async (t) => {
     await t.step("should handle Java on different platforms", async () => {
       const javaScript = currentOS === "windows"
@@ -243,7 +239,7 @@ fi`;
       try {
         const result = await runWithPath(
           [currentOS === "windows" ? "java.bat" : "java", "-version"],
-          [mockJava.path.replace(`/${mockJava.path.split("/").pop()}`, "")],
+          [dirname(mockJava.path)],
         );
 
         assertEquals(result.code, 0);
@@ -261,14 +257,14 @@ echo SD replacement tool: %*`
 echo "SD replacement tool: $*"`;
 
       const mockSd = await createMockTool(
-        currentOS === "windows" ? "sd.exe" : "sd",
+        currentOS === "windows" ? "sd.bat" : "sd",
         sdScript,
       );
 
       try {
         const result = await runWithPath(
-          [currentOS === "windows" ? "sd.exe" : "sd", "test", "replacement"],
-          [mockSd.path.replace(`/${mockSd.path.split("/").pop()}`, "")],
+          [currentOS === "windows" ? "sd.bat" : "sd", "test", "replacement"],
+          [dirname(mockSd.path)],
         );
 
         assertEquals(result.code, 0);
@@ -294,14 +290,14 @@ else
 fi`;
 
       const mockMise = await createMockTool(
-        currentOS === "windows" ? "mise.exe" : "mise",
+        currentOS === "windows" ? "mise.bat" : "mise",
         miseScript,
       );
 
       try {
         const result = await runWithPath(
-          [currentOS === "windows" ? "mise.exe" : "mise", "install", "java"],
-          [mockMise.path.replace(`/${mockMise.path.split("/").pop()}`, "")],
+          [currentOS === "windows" ? "mise.bat" : "mise", "install", "java"],
+          [dirname(mockMise.path)],
         );
 
         assertEquals(result.code, 0);
