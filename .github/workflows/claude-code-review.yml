@@ -10,6 +10,11 @@ on:
     #   - "src/**/*.js"
     #   - "src/**/*.jsx"
 
+# Ensure only one review runs at a time per PR
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   claude-review:
     # Optional: Filter by PR author
@@ -40,16 +45,16 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Please review this pull request and provide feedback on:
+            Review this PR. Focus on:
             - Code quality and best practices
             - Potential bugs or issues
             - Performance considerations
             - Security concerns
             - Test coverage
 
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
+            Use CLAUDE.md for style guidance. Be brief and constructive.
 
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            Use `gh pr comment` to post your review.
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://docs.claude.com/en/docs/claude-code/sdk#command-line for available options
