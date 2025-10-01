@@ -257,13 +257,13 @@ echo SD replacement tool: %*`
 echo "SD replacement tool: $*"`;
 
       const mockSd = await createMockTool(
-        currentOS === "windows" ? "sd.exe" : "sd",
+        currentOS === "windows" ? "sd.bat" : "sd",
         sdScript,
       );
 
       try {
         const result = await runWithPath(
-          [currentOS === "windows" ? "sd.exe" : "sd", "test", "replacement"],
+          [currentOS === "windows" ? "sd.bat" : "sd", "test", "replacement"],
           [dirname(mockSd.path)],
         );
 
@@ -290,13 +290,13 @@ else
 fi`;
 
       const mockMise = await createMockTool(
-        currentOS === "windows" ? "mise.exe" : "mise",
+        currentOS === "windows" ? "mise.bat" : "mise",
         miseScript,
       );
 
       try {
         const result = await runWithPath(
-          [currentOS === "windows" ? "mise.exe" : "mise", "install", "java"],
+          [currentOS === "windows" ? "mise.bat" : "mise", "install", "java"],
           [dirname(mockMise.path)],
         );
 
