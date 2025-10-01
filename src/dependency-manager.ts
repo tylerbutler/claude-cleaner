@@ -414,10 +414,12 @@ export class DependencyManager {
       // On Windows, if 'where' fails, try common mise installation locations
       if (isWindows && command === "mise") {
         const homeDir = systemInfo.homeDir || "";
+        // According to mise docs, Windows default is %LOCALAPPDATA%\mise\mise
         const commonPaths = [
-          join(homeDir, "AppData", "Local", "mise", "shims", "mise"),
-          join(homeDir, "AppData", "Local", "mise", "bin", "mise.exe"),
+          join(homeDir, "AppData", "Local", "mise", "mise"),
+          join(homeDir, "AppData", "Local", "mise", "mise.exe"),
           join(homeDir, ".local", "bin", "mise"),
+          join(homeDir, ".local", "bin", "mise.exe"),
         ];
 
         this.logger.verbose(
