@@ -292,11 +292,13 @@ export class DependencyManager {
           }
 
           if (result.code === 0) {
+            const sdPath = await this.findExecutablePath("sd");
             return {
               tool,
               available: true,
               version: result.stdout.trim(),
-              path: (await this.findExecutablePath("sd")) || undefined,
+              // On Windows, sd may not be in PATH but works via mise exec
+              path: sdPath || undefined,
             };
           }
           return { tool, available: false, error: result.stderr };
@@ -317,10 +319,16 @@ export class DependencyManager {
 
         case "mise": {
           // misePath is already set at the start of checkDependency()
+          this.logger.verbose(
+            `Checking mise with: ${miseCmd} --version`,
+          );
           const result = await $`${miseCmd} --version`
             .stdout("piped")
             .stderr("piped")
             .noThrow();
+          this.logger.verbose(
+            `mise --version result: code=${result.code}, stdout=${result.stdout}, stderr=${result.stderr}, misePath=${this.misePath}`,
+          );
           if (result.code === 0) {
             return {
               tool,
