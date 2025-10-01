@@ -271,3 +271,112 @@ The release process is configured via:
 - `.releaserc.json` - semantic-release plugin configuration
 - `package.json` - npm dependencies for semantic-release
 - `.github/workflows/release.yml` - GitHub Actions workflow
+
+### Troubleshooting Releases
+
+#### Failed Release Mid-Process
+
+If semantic-release fails partway through:
+
+1. **Check what completed**: Look at GitHub Actions logs to see which plugins ran
+2. **Verify git state**: Check if commits/tags were created
+   ```bash
+   git log --oneline -5
+   git tag -l
+   ```
+3. **Verify JSR publish**: Check [JSR package page](https://jsr.io/@tylerbu/claude-cleaner)
+4. **Verify GitHub release**: Check [GitHub releases](../../releases)
+
+**Recovery steps:**
+
+```bash
+# If commits were made but release failed
+git log --oneline -3  # Check recent commits
+git revert HEAD       # Revert the version bump commit if needed
+
+# If tag was created but release failed
+git tag -d v0.3.0     # Delete local tag
+git push origin :refs/tags/v0.3.0  # Delete remote tag
+
+# Re-run the release workflow after fixing issues
+```
+
+#### Version Conflicts
+
+If the calculated version already exists:
+
+1. Check if the release was partially completed
+2. Look for duplicate tags: `git tag -l`
+3. If tag exists but no release, delete tag and re-run
+4. If release exists, commits since then weren't release-worthy (only chore/docs)
+
+#### JSR Authentication Issues
+
+The workflow uses GitHub OIDC for JSR authentication via `id-token: write` permission.
+
+**If JSR publish fails:**
+
+1. Verify workflow permissions in `.github/workflows/release.yml`
+2. Check that `id-token: write` is present
+3. Review semantic-release-jsr plugin logs for auth errors
+4. Ensure JSR account is linked to GitHub organization
+
+**Common causes:**
+
+- OIDC token expired (very rare, GitHub handles refresh)
+- JSR service outage (check [JSR status](https://status.jsr.io))
+- Package name mismatch between `deno.json` and JSR
+
+#### Build Failures
+
+If binary compilation fails:
+
+```bash
+# Test locally first
+deno compile --allow-all --target x86_64-unknown-linux-gnu --output test-binary src/main.ts
+./test-binary --version
+
+# Check Deno version compatibility
+deno --version
+```
+
+**Common issues:**
+
+- Deno version mismatch (workflow uses `v2.x`)
+- Platform-specific compilation errors
+- Missing source files or dependencies
+
+#### Dry-Run Issues
+
+If dry-run mode doesn't work as expected:
+
+```bash
+# Test semantic-release locally
+npx semantic-release --dry-run
+
+# Check configuration
+cat .releaserc.json
+
+# Verify conventional commits
+git log --oneline -10
+```
+
+#### Botched Release Recovery
+
+If a release goes out with wrong version or broken binaries:
+
+1. **Yanking from JSR** (if needed):
+   ```bash
+   # JSR doesn't support yanking, but you can publish a patch
+   # Bump to next patch version immediately
+   ```
+
+2. **Delete GitHub release** (if needed):
+   - Go to [Releases](../../releases)
+   - Click release → Delete release
+   - Delete associated tag
+
+3. **Fix and re-release**:
+   - Make fix commits
+   - Re-run release workflow
+   - New version will be published

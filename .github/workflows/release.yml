@@ -30,6 +30,13 @@ jobs:
         with:
           deno-version: v2.x
 
+      - name: Validate code
+        run: |
+          deno fmt --check
+          deno lint
+          deno check src/main.ts
+          deno test --allow-all
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -38,21 +45,32 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Validate code
-        run: |
-          deno check
-          deno test --allow-all
-          deno lint
-
       - name: Build binaries
         run: |
           set -euo pipefail
           mkdir -p dist
-          deno compile --allow-all --target x86_64-unknown-linux-gnu --output dist/claude-cleaner-linux-x64 src/main.ts
-          deno compile --allow-all --target aarch64-unknown-linux-gnu --output dist/claude-cleaner-linux-arm64 src/main.ts
-          deno compile --allow-all --target x86_64-apple-darwin --output dist/claude-cleaner-macos-x64 src/main.ts
-          deno compile --allow-all --target aarch64-apple-darwin --output dist/claude-cleaner-macos-arm64 src/main.ts
-          deno compile --allow-all --target x86_64-pc-windows-msvc --output dist/claude-cleaner-windows-x64.exe src/main.ts
+
+          targets=(
+            "x86_64-unknown-linux-gnu:linux-x64"
+            "aarch64-unknown-linux-gnu:linux-arm64"
+            "x86_64-apple-darwin:macos-x64"
+            "aarch64-apple-darwin:macos-arm64"
+            "x86_64-pc-windows-msvc:windows-x64.exe"
+          )
+
+          for target_pair in "${targets[@]}"; do
+            target="${target_pair%%:*}"
+            name="${target_pair##*:}"
+            echo "Building claude-cleaner-$name for $target..."
+            deno compile --allow-all --target "$target" --output "dist/claude-cleaner-$name" src/main.ts
+          done
+
+      - name: Verify binaries
+        run: |
+          echo "Verifying built binaries..."
+          ls -lh dist/
+          file dist/claude-cleaner-linux-x64
+          echo "All binaries built successfully"
 
       - name: Run semantic-release (dry-run)
         if: ${{ inputs.dry-run }}

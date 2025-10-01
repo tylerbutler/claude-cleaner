@@ -30,7 +30,6 @@ backup-*/
 
 # npm dependencies (for semantic-release)
 node_modules/
-package-lock.json
 
 # Build artifacts
 dist/
