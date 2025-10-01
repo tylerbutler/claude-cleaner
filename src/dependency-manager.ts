@@ -384,7 +384,7 @@ export class DependencyManager {
       if (result.code === 0) {
         // 'where' on Windows can return multiple paths, take the first one
         const output = result.stdout.trim();
-        return isWindows ? output.split('\n')[0]?.trim() : output;
+        return isWindows ? output.split("\n")[0]?.trim() : output;
       }
     } catch {
       // Ignore errors
