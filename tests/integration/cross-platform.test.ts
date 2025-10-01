@@ -4,7 +4,7 @@
 
 import { assert, assertEquals } from "@std/assert";
 import { exists } from "@std/fs";
-import { join, normalize, resolve } from "@std/path";
+import { dirname, join, normalize, resolve } from "@std/path";
 import { createMockTool, createTestRepo, runWithPath } from "../utils/test-helpers.ts";
 
 const currentOS = Deno.build.os;
@@ -90,7 +90,7 @@ Deno.test({
       try {
         const result = await runWithPath(
           [currentOS === "windows" ? "test-tool.bat" : "test-tool"],
-          [mockTool.path.replace(`/${mockTool.path.split("/").pop()}`, "")],
+          [dirname(mockTool.path)],
         );
 
         assertEquals(result.code, 0);
@@ -239,7 +239,7 @@ fi`;
       try {
         const result = await runWithPath(
           [currentOS === "windows" ? "java.bat" : "java", "-version"],
-          [mockJava.path.replace(`/${mockJava.path.split("/").pop()}`, "")],
+          [dirname(mockJava.path)],
         );
 
         assertEquals(result.code, 0);
@@ -264,7 +264,7 @@ echo "SD replacement tool: $*"`;
       try {
         const result = await runWithPath(
           [currentOS === "windows" ? "sd.exe" : "sd", "test", "replacement"],
-          [mockSd.path.replace(`/${mockSd.path.split("/").pop()}`, "")],
+          [dirname(mockSd.path)],
         );
 
         assertEquals(result.code, 0);
@@ -297,7 +297,7 @@ fi`;
       try {
         const result = await runWithPath(
           [currentOS === "windows" ? "mise.exe" : "mise", "install", "java"],
-          [mockMise.path.replace(`/${mockMise.path.split("/").pop()}`, "")],
+          [dirname(mockMise.path)],
         );
 
         assertEquals(result.code, 0);
