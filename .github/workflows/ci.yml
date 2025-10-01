@@ -39,6 +39,8 @@ jobs:
 
       - name: Run tests
         run: deno task test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   quality:
     name: Code Quality
