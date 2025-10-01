@@ -204,12 +204,21 @@ This project uses [semantic-release](https://semantic-release.gitbook.io/) with 
 
 ### Conventional Commit Format
 
-All commits must follow the conventional commit format:
+All commits and **PR titles** must follow the [Conventional Commits specification](https://www.conventionalcommits.org/).
+
+**Quick Reference:**
 
 - `feat: description` - New features (minor version bump)
 - `fix: description` - Bug fixes (patch version bump)
 - `feat!: description` or `BREAKING CHANGE:` - Breaking changes (major version bump in 1.x+, minor in 0.x)
-- `chore:`, `docs:`, `test:`, `refactor:` - No release (maintenance commits)
+- `chore:`, `docs:`, `test:`, `refactor:`, `perf:`, `ci:`, `build:` - No release (maintenance commits)
+
+**Format:** `type(optional-scope): description`
+
+**Learn More:**
+- [Conventional Commits Specification](https://www.conventionalcommits.org/)
+- [Semantic Release: Commit Message Format](https://semantic-release.gitbook.io/semantic-release/#commit-message-format)
+- [Angular Commit Guidelines](https://github.com/angular/angular/blob/main/CONTRIBUTING.md#commit) (basis for conventional commits)
 
 **Examples:**
 
@@ -229,6 +238,8 @@ BREAKING CHANGE: The --all flag has been renamed to --include-all for clarity"
 git commit -m "docs: improve README examples"
 git commit -m "chore: update dependencies"
 ```
+
+> **Note**: PR titles are validated automatically by the [PR Title Check workflow](../.github/workflows/pr-title-check.yml). When using squash merging (recommended), the PR title becomes the commit message.
 
 ### Creating a Release
 
