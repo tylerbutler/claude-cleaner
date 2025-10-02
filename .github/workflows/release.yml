@@ -23,26 +23,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Generate GitHub App token
+        id: generate_token
+        uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # ratchet:tibdex/github-app-token@v2
+        with:
+          app_id: ${{ secrets.RELEASE_APP_ID }}
+          private_key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Checkout code
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # ratchet:actions/checkout@v4
         with:
           fetch-depth: 0 # Full history for conventional commits
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.generate_token.outputs.token }}
 
       - name: Setup Deno
         uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # ratchet:denoland/setup-deno@v2
         with:
           deno-version: v2.x
-
-      - name: Cache Deno dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/deno
-            ~/.deno
-          key: ${{ runner.os }}-deno-${{ hashFiles('deno.json', 'deno.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-deno-
+          cache: true
+          # setting `cache-hash` implies `cache: true` and replaces the default of `${{ hashFiles('**/deno.lock') }}`
+          cache-hash: ${{ hashFiles('**/deno.json', '**/deno.lock') }}
 
       - name: Validate code
         run: |
@@ -116,11 +116,11 @@ jobs:
       - name: Run semantic-release (dry-run)
         if: ${{ inputs.dry-run }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
         run: npx semantic-release --dry-run
 
       - name: Run semantic-release
         if: ${{ !inputs.dry-run }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
         run: npx semantic-release

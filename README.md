@@ -1,10 +1,10 @@
 # Claude Cleaner
 
-[![CI](https://github.com/tylerbu/claude-cleaner/actions/workflows/ci.yml/badge.svg)](https://github.com/tylerbu/claude-cleaner/actions/workflows/ci.yml)
+[![CI](https://github.com/tylerbutler/claude-cleaner/actions/workflows/ci.yml/badge.svg)](https://github.com/tylerbutler/claude-cleaner/actions/workflows/ci.yml)
 [![JSR](https://jsr.io/badges/@tylerbu/claude-cleaner)](https://jsr.io/@tylerbu/claude-cleaner)
 [![JSR Score](https://jsr.io/badges/@tylerbu/claude-cleaner/score)](https://jsr.io/@tylerbu/claude-cleaner)
-[![GitHub release](https://img.shields.io/github/v/release/tylerbu/claude-cleaner)](https://github.com/tylerbu/claude-cleaner/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/tylerbu/claude-cleaner/releases)
+[![GitHub release](https://img.shields.io/github/v/release/tylerbutler/claude-cleaner)](https://github.com/tylerbutler/claude-cleaner/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/tylerbutler/claude-cleaner/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 A TypeScript/Deno tool to remove Claude artifacts from Git repositories.
