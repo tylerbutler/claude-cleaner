@@ -74,6 +74,8 @@ export default {
         // Allow publishing with uncommitted changes since @semantic-release/git
         // commits after this plugin runs (creates temporal ordering issue)
         allowDirty: true,
+        // Use deno.json instead of package.json for version management
+        pkgJsonPath: "./deno.json",
       },
     ],
     [
