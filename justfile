@@ -54,7 +54,7 @@ lint:
 
 # Type check
 check:
-    deno check src/main.ts
+    deno check
 
 # Run all quality checks (format, lint, type check)
 qa: fmt-check lint check
