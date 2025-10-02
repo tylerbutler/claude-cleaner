@@ -144,11 +144,12 @@ Options:
   -V, --version                     Show version
   -x, --execute                     Execute changes (default: dry-run mode shows what would be changed)
   -v, --verbose                     Enable verbose output
-  --auto-install                    Automatically install required dependencies
-  --files-only                      Only remove Claude files (skip commit cleaning)
-  --commits-only                    Only clean commit messages (skip file removal)
-  --branch <branch>                 Specify branch to clean (default: HEAD)
-  --include-all-common-patterns     Include ALL known common Claude patterns (for complete cleanup)
+  -i, --interactive                 Interactively select which files to remove
+  -a, --auto-install                Automatically install required dependencies
+  -f, --files-only                  Only remove Claude files (skip commit cleaning)
+  -c, --commits-only                Only clean commit messages (skip file removal)
+  -b, --branch <branch>             Specify branch to clean (default: HEAD)
+  -A, --include-all-common-patterns Include ALL known common Claude patterns (for complete cleanup)
   --include-dirs <name>             Add directory name to remove (matches directories with this name anywhere)
   --include-dirs-file <file>        Read directory names from file (one pattern per line)
   --no-defaults                     Don't include default Claude patterns (use only explicit patterns)
@@ -182,17 +183,17 @@ claude-cleaner check-deps
 ### Selective Cleaning
 
 ```bash
-# Preview file removal only
-claude-cleaner . --files-only --auto-install
+# Preview file removal only (with short flags)
+claude-cleaner . -f -a
 
-# Execute file removal only
-claude-cleaner . --files-only --execute --auto-install
+# Execute file removal only (with short flags)
+claude-cleaner . -f -x -a
 
-# Preview commit message cleaning only
-claude-cleaner . --commits-only --auto-install
+# Preview commit message cleaning only (with short flags)
+claude-cleaner . -c -a
 
-# Execute commit cleaning on specific branch
-claude-cleaner . --commits-only --execute --branch feature/my-branch --auto-install
+# Execute commit cleaning on specific branch (with short flags)
+claude-cleaner . -c -x -b feature/my-branch -a
 ```
 
 ### Comprehensive Cleaning
@@ -200,17 +201,17 @@ claude-cleaner . --commits-only --execute --branch feature/my-branch --auto-inst
 Use `--include-all-common-patterns` for complete Claude artifact removal, especially for long-running projects or when preparing repositories for distribution.
 
 ```bash
-# Preview comprehensive cleanup (recommended first)
-claude-cleaner --include-all-common-patterns --verbose
+# Preview comprehensive cleanup (recommended first, with short flags)
+claude-cleaner -A -v
 
-# Execute complete cleanup - find ALL known/possible Claude patterns
-claude-cleaner --include-all-common-patterns --execute
+# Execute complete cleanup - find ALL known/possible Claude patterns (with short flags)
+claude-cleaner -A -x
 
-# Preview comprehensive file-only cleanup
-claude-cleaner --include-all-common-patterns --files-only --verbose
+# Preview comprehensive file-only cleanup (with short flags)
+claude-cleaner -A -f -v
 
-# Execute comprehensive file-only cleanup
-claude-cleaner --include-all-common-patterns --files-only --execute
+# Execute comprehensive file-only cleanup (with short flags)
+claude-cleaner -A -f -x
 ```
 
 ### Advanced Workflows
@@ -363,11 +364,11 @@ sudo claude-cleaner check-deps --auto-install
 ### Getting Help
 
 ```bash
-# Verbose dry-run output for debugging
-claude-cleaner --verbose
+# Verbose dry-run output for debugging (with short flags)
+claude-cleaner -v
 
-# Check dependency status
-claude-cleaner check-deps
+# Check dependency status (with short flags)
+claude-cleaner check-deps -v
 
 # View help
 claude-cleaner --help

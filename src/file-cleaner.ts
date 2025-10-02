@@ -1007,10 +1007,17 @@ export class FileCleaner {
     this.logger.verbose("Repository validation passed");
   }
 
-  async cleanFiles(): Promise<void> {
+  async cleanFiles(
+    filesToClean?: Array<{
+      path: string;
+      type: "file" | "directory";
+      reason: string;
+      earliestCommit?: { hash: string; date: string; message: string };
+    }>,
+  ): Promise<void> {
     await this.validateRepository();
 
-    const claudeFiles = await this.detectClaudeFiles();
+    const claudeFiles = filesToClean ?? (await this.detectClaudeFiles());
 
     if (this.options.createBackup) {
       await this.createBackup();
