@@ -81,7 +81,7 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
         includeDirectories: [".serena", "claudedocs"],
         excludeDefaults: false, // Should include defaults
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       };
 
       const fileCleaner = new FileCleaner(options, logger);
@@ -131,7 +131,7 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
         includeDirectories: [".serena", "claudedocs"],
         excludeDefaults: true, // Should exclude defaults
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       };
 
       const fileCleaner = new FileCleaner(options, logger);
@@ -178,7 +178,7 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
         includeDirectories: [], // No user patterns
         excludeDefaults: true, // Exclude defaults
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       };
 
       const fileCleaner = new FileCleaner(options, logger);
@@ -231,7 +231,7 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
         includeDirectories: [".serena"],
         excludeDefaults: true,
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       };
 
       const fileCleaner = new FileCleaner(options, logger);
@@ -280,7 +280,7 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
         includeDirectories: [],
         excludeDefaults: false,
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       };
 
       const fileCleanerWithDefaults = new FileCleaner(
@@ -304,7 +304,7 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
         includeDirectories: [],
         excludeDefaults: true,
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       };
 
       const fileCleanerWithoutDefaults = new FileCleaner(

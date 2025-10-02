@@ -469,7 +469,7 @@ async function main() {
       )
       .option(
         "--include-instruction-files",
-        "Include CLAUDE.md instruction files for removal (by default they are preserved)",
+        "Include CLAUDE.md instruction files for removal (preserved by default to keep project documentation)",
       )
       .action(cleanAction)
       .command("check-deps", "Check if all required dependencies are available")

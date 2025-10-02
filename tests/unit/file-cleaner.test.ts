@@ -153,7 +153,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
         includeDirectories: [],
         excludeDefaults: false,
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       },
       logger,
     );
@@ -182,7 +182,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
         includeDirectories: [],
         excludeDefaults: false,
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       },
       logger,
     );
@@ -210,7 +210,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
         includeDirectories: [],
         excludeDefaults: false,
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       },
       logger,
     );
@@ -238,7 +238,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
         includeDirectories: [],
         excludeDefaults: false,
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       },
       logger,
     );
@@ -261,7 +261,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
         includeDirectories: [],
         excludeDefaults: false,
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       },
       logger,
     );
@@ -284,7 +284,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
         includeDirectories: [],
         excludeDefaults: false,
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       },
       logger,
     );
@@ -311,7 +311,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
         includeDirectories: [],
         excludeDefaults: false,
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       },
       logger,
     );
@@ -335,7 +335,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
         includeDirectories: [],
         excludeDefaults: false,
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       },
       logger,
     );
@@ -360,7 +360,7 @@ Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
         includeDirectories: [],
         excludeDefaults: false,
         includeAllCommonPatterns: false,
-      includeInstructionFiles: false,
+        includeInstructionFiles: false,
       },
       logger,
     );
