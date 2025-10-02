@@ -61,19 +61,11 @@ export default {
       },
     ],
     [
-      "@semantic-release/git",
-      {
-        // Commit updated CHANGELOG.md and deno.json (version bump) back to repo
-        assets: ["CHANGELOG.md", "deno.json"],
-        message: "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}",
-      },
-    ],
-    [
       "@sebbo2002/semantic-release-jsr",
       {
-        // Allow publishing with uncommitted changes since @semantic-release/git
-        // commits after this plugin runs (creates temporal ordering issue)
-        allowDirty: true,
+        // Use deno.json instead of package.json for version management
+        // This plugin updates deno.json and publishes to JSR
+        pkgJsonPath: "./deno.json",
       },
     ],
     [

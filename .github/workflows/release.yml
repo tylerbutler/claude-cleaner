@@ -121,6 +121,30 @@ jobs:
 
       - name: Run semantic-release
         if: ${{ !inputs.dry-run }}
+        id: semantic_release
         env:
           GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
         run: npx semantic-release
+
+      - name: Commit and push version changes
+        if: ${{ !inputs.dry-run }}
+        run: |
+          # Check if there are changes to commit (deno.json and CHANGELOG.md)
+          if git diff --quiet HEAD -- deno.json CHANGELOG.md; then
+            echo "No version changes to commit"
+            exit 0
+          fi
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Get the new version from deno.json
+          NEW_VERSION=$(jq -r '.version' deno.json)
+
+          # Commit the changes
+          git add deno.json CHANGELOG.md
+          git commit -m "chore: bump to version ${NEW_VERSION} [skip ci]"
+
+          # Push the commit
+          git push origin HEAD:main
