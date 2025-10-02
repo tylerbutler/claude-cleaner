@@ -19,8 +19,10 @@ export default {
           { type: "build", release: false },
           { type: "ci", release: false },
           { type: "chore", release: false },
-          // Breaking changes always trigger major release regardless of type
-          { breaking: true, release: "major" },
+          // Breaking changes bump minor version in pre-1.0 (0.x.x)
+          // This prevents 0.x.x → 1.0.0 until we're ready for stable release
+          // Change to "major" when ready for 1.0.0+
+          { breaking: true, release: "minor" },
         ],
       },
     ],
