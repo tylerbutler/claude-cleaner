@@ -78,6 +78,7 @@ Deno.test("All Common Patterns Flag", async (t) => {
       includeDirectories: [],
       excludeDefaults: true, // This should conflict with includeAllCommonPatterns
       includeAllCommonPatterns: true,
+      includeInstructionFiles: false,
     };
 
     // Should not be able to create FileCleaner with conflicting options
@@ -111,6 +112,7 @@ Deno.test("All Common Patterns Flag", async (t) => {
       includeDirectories: [],
       excludeDefaults: false,
       includeAllCommonPatterns: true,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -146,6 +148,7 @@ Deno.test("All Common Patterns Flag", async (t) => {
       includeDirectories: [],
       excludeDefaults: false,
       includeAllCommonPatterns: true,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -181,6 +184,7 @@ Deno.test("All Common Patterns Flag", async (t) => {
       includeDirectories: [],
       excludeDefaults: false,
       includeAllCommonPatterns: true,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -218,6 +222,7 @@ Deno.test("All Common Patterns Flag", async (t) => {
       includeDirectories: [],
       excludeDefaults: false,
       includeAllCommonPatterns: true,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -256,6 +261,7 @@ Deno.test("All Common Patterns Flag", async (t) => {
       includeDirectories: [],
       excludeDefaults: false,
       includeAllCommonPatterns: true,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -297,6 +303,7 @@ Deno.test("All Common Patterns Flag", async (t) => {
       includeDirectories: [],
       excludeDefaults: false,
       includeAllCommonPatterns: true,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -338,6 +345,7 @@ Deno.test("All Common Patterns Flag", async (t) => {
       includeDirectories: [],
       excludeDefaults: false,
       includeAllCommonPatterns: true,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -375,6 +383,7 @@ Deno.test("All Common Patterns Flag", async (t) => {
       includeDirectories: [],
       excludeDefaults: false,
       includeAllCommonPatterns: true,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -413,6 +422,7 @@ Deno.test("All Common Patterns Flag", async (t) => {
       includeDirectories: [],
       excludeDefaults: false,
       includeAllCommonPatterns: true,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -451,6 +461,7 @@ Deno.test("All Common Patterns Flag", async (t) => {
       includeDirectories: [],
       excludeDefaults: false,
       includeAllCommonPatterns: true,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -495,6 +506,7 @@ Deno.test("All Common Patterns Flag", async (t) => {
       includeDirectories: [],
       excludeDefaults: false,
       includeAllCommonPatterns: true,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);

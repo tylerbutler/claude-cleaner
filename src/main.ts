@@ -24,6 +24,7 @@ interface CleanOptions {
   includeDirsFile?: string | undefined;
   defaults?: boolean | undefined;
   includeAllCommonPatterns?: boolean | undefined;
+  includeInstructionFiles?: boolean | undefined;
 }
 
 function createFileCleaner(
@@ -42,6 +43,7 @@ function createFileCleaner(
       includeDirectories: includeDirs,
       excludeDefaults: options.defaults === false,
       includeAllCommonPatterns: options.includeAllCommonPatterns || false,
+      includeInstructionFiles: options.includeInstructionFiles || false,
     },
     logger,
   );
@@ -464,6 +466,10 @@ async function main() {
       .option(
         "--include-all-common-patterns",
         "Include ALL known common Claude patterns (even rarely used ones) - use for complete cleanup",
+      )
+      .option(
+        "--include-instruction-files",
+        "Include CLAUDE.md instruction files for removal (by default they are preserved)",
       )
       .action(cleanAction)
       .command("check-deps", "Check if all required dependencies are available")

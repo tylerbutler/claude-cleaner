@@ -43,22 +43,27 @@ Claude Cleaner removes Claude-related files, commit trailers, and other artifact
 
 Claude Cleaner targets specific files and commit patterns created by Claude Code. Your regular project files and commit messages remain untouched.
 
+> [!IMPORTANT]
+> **Breaking Change (v0.3.0):** `CLAUDE.md` instruction files are now **preserved by default** to keep project documentation intact. Use `--include-instruction-files` or `--include-all-common-patterns` to remove them.
+
 ### Files Removed (Standard Mode)
 
 The tool uses **exact basename matching** for safety. For example:
 
-- **`CLAUDE.md`** matches only files named exactly `CLAUDE.md` (not `CLAUDE.md.backup` or `MY-CLAUDE.md`)
 - **`.claude/`** matches only directories named exactly `.claude` (not `.claude2` or `my.claude`)
 - **`.vscode/claude.json`** matches the exact path `.vscode/claude.json` only
 
-**Standard patterns:**
+**Standard patterns (CLAUDE.md files are preserved by default):**
 
-- **`CLAUDE.md`** - Project-specific Claude instructions
 - **`.claude/` directories** - Claude workspace configurations
 - **`claudedocs/` directories** - Claude documentation (MCP server)
 - **`.serena/` directories** - Serena MCP server data
 - **`.vscode/claude.json`** - VSCode Claude extension settings
 - **Temporary Claude files** - Auto-generated temporary files
+
+**Preserved by default:**
+
+- **`CLAUDE.md`** - Project instruction files (use `--include-instruction-files` to remove)
 
 > [!TIP]
 > Use `--include-dirs <name>` to match additional directories like `.claude-backup` or `claude-workspace` (matches by exact directory name anywhere in the repository)
@@ -149,6 +154,7 @@ Options:
   --commits-only                    Only clean commit messages (skip file removal)
   --branch <branch>                 Specify branch to clean (default: HEAD)
   --include-all-common-patterns     Include ALL known common Claude patterns (for complete cleanup)
+  --include-instruction-files       Include CLAUDE.md instruction files for removal (preserved by default)
   --include-dirs <name>             Add directory name to remove (matches directories with this name anywhere)
   --include-dirs-file <file>        Read directory names from file (one pattern per line)
   --no-defaults                     Don't include default Claude patterns (use only explicit patterns)
@@ -211,6 +217,18 @@ claude-cleaner --include-all-common-patterns --files-only --verbose
 
 # Execute comprehensive file-only cleanup
 claude-cleaner --include-all-common-patterns --files-only --execute
+```
+
+### Removing Instruction Files
+
+By default, `CLAUDE.md` instruction files are preserved to keep project documentation intact. To remove them:
+
+```bash
+# Remove CLAUDE.md files along with other Claude artifacts
+claude-cleaner --include-instruction-files --execute
+
+# Or use comprehensive mode (includes instruction files automatically)
+claude-cleaner --include-all-common-patterns --execute
 ```
 
 ### Advanced Workflows
