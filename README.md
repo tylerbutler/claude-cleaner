@@ -300,9 +300,32 @@ Claude Cleaner prioritizes safety with multiple protection mechanisms. However, 
 
 ### Automatic Backups
 
-- **Automatic creation**: Backup branches created before any modifications
+Claude Cleaner uses two different backup strategies depending on the operation, both designed to protect against history rewriting:
+
+#### File Cleaning Backups (Bare Clone)
+
+When removing files with BFG Repo-Cleaner:
+
+- **Strategy**: Creates a complete **bare clone** in a separate directory
+- **Location**: `../<repo-name>-backup-<timestamp>` (outside your repository)
+- **Protection**: Since BFG rewrites commits and updates all refs in the target repository, the bare clone remains completely untouched as a separate physical repository
+- **Recovery**: `git clone` the backup directory to restore
+
+```bash
+# Example backup location
+/path/to/your-repo/.../your-repo-backup-2024-01-15T10-30-00-000Z
+```
+
+#### Commit Cleaning Backups (Branch)
+
+When cleaning commit messages with git filter-branch:
+
+- **Strategy**: Creates a **branch** in the same repository
 - **Naming format**: `backup/pre-claude-clean-YYYY-MM-DDTHH-MM-SS-sssZ`
-- **Easy recovery**: `git checkout backup/...` to restore previous state
+- **Protection**: filter-branch only rewrites the specified revision range (current branch), leaving the backup branch pointing to original commits
+- **Recovery**: `git checkout backup/...` to restore previous state
+
+**Why different strategies?** BFG operates on entire repositories and updates all refs, so it needs physical separation. Git filter-branch allows selective rewriting by revision range, so a branch backup is sufficient and more convenient.
 
 ### Dry Run Mode (Default)
 
@@ -398,11 +421,13 @@ claude-cleaner --help
 
 If something goes wrong or you need to undo changes, use these recovery steps.
 
+#### Recovering from Commit Cleaning (Branch Backup)
+
 ```bash
-# View available backups
+# View available backup branches
 git branch | grep backup/pre-claude-clean
 
-# Restore from automatic backup
+# Restore from automatic backup branch
 git checkout backup/pre-claude-clean-2024-01-15T10-30-00-000Z
 
 # If you need to restore your main branch
@@ -410,6 +435,25 @@ git branch -f main backup/pre-claude-clean-2024-01-15T10-30-00-000Z
 git checkout main
 
 # Verify restoration
+git log --oneline -10
+```
+
+#### Recovering from File Cleaning (Bare Clone Backup)
+
+```bash
+# List backup directories (in parent directory)
+ls -d ../your-repo-backup-*
+
+# Clone the backup to restore
+cd ..
+git clone your-repo-backup-2024-01-15T10-30-00-000Z your-repo-restored
+
+# Or replace your current repository
+rm -rf your-repo
+git clone your-repo-backup-2024-01-15T10-30-00-000Z your-repo
+
+# Verify restoration
+cd your-repo
 git log --oneline -10
 ```
 
@@ -449,10 +493,10 @@ git clone <repository-url>
 **A:** Claude Cleaner creates automatic backups and runs in dry-run mode by default. Always review the dry-run output before using `--execute`.
 
 **Q: Can I undo the changes?**\
-**A:** Yes, backup branches are created automatically. Use `git checkout backup/pre-claude-clean-...` to restore your repository.
+**A:** Yes, automatic backups are created before any changes. File cleaning creates a bare clone backup (separate repository), while commit cleaning creates a branch backup. See the Recovery and Rollback section for detailed instructions.
 
 **Q: What if something goes wrong during cleaning?**\
-**A:** Stop the process and restore from the automatic backup branch. Check the troubleshooting section for specific error resolution.
+**A:** Stop the process and restore from the automatic backup (branch backup for commit cleaning, bare clone for file cleaning). Check the Recovery and Rollback section for specific recovery steps.
 
 ### Compatibility
 

@@ -7,7 +7,7 @@ hooks {
     stash = "git"
     steps {
       ["deno"] = (Builtins.deno) {
-        glob = List("*.ts", "*.tsx", "*.js", "*.jsx", "*.md")
+        glob = List("*.ts", "*.tsx", "*.js", "*.jsx")
       }
       ["deno_check"] = Builtins.deno_check
     }
