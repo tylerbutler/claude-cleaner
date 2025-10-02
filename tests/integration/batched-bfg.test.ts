@@ -28,9 +28,9 @@ Deno.test("Integration - Batched BFG Operations", async (t) => {
       assert(await exists(join(repo.path, ".claude")));
       assert(await exists(join(repo.path, "claudedocs")));
 
-      // Run cleaning with execute flag
+      // Run cleaning with execute flag (include instruction files to test batching)
       const result =
-        await $`deno run --allow-all src/main.ts --files-only --execute --auto-install ${repo.path}`
+        await $`deno run --allow-all src/main.ts --files-only --execute --auto-install --include-instruction-files ${repo.path}`
           .cwd(Deno.cwd());
 
       // Verify cleanup completed successfully

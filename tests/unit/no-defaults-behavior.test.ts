@@ -81,6 +81,7 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
         includeDirectories: [".serena", "claudedocs"],
         excludeDefaults: false, // Should include defaults
         includeAllCommonPatterns: false,
+        includeInstructionFiles: false,
       };
 
       const fileCleaner = new FileCleaner(options, logger);
@@ -93,12 +94,11 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
       assert(paths.includes(".serena"));
       assert(paths.includes("claudedocs"));
       assert(paths.includes(".claude"));
-      assert(paths.includes("CLAUDE.md"));
+      assert(!paths.includes("CLAUDE.md")); // CLAUDE.md is preserved by default
 
       // Check reasons
       assert(reasons.includes("User-specified directory pattern"));
       assert(reasons.includes("Claude configuration directory"));
-      assert(reasons.includes("Claude project configuration file"));
 
       await Deno.remove(repoPath, { recursive: true });
     },
@@ -131,6 +131,7 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
         includeDirectories: [".serena", "claudedocs"],
         excludeDefaults: true, // Should exclude defaults
         includeAllCommonPatterns: false,
+        includeInstructionFiles: false,
       };
 
       const fileCleaner = new FileCleaner(options, logger);
@@ -177,6 +178,7 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
         includeDirectories: [], // No user patterns
         excludeDefaults: true, // Exclude defaults
         includeAllCommonPatterns: false,
+        includeInstructionFiles: false,
       };
 
       const fileCleaner = new FileCleaner(options, logger);
@@ -229,6 +231,7 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
         includeDirectories: [".serena"],
         excludeDefaults: true,
         includeAllCommonPatterns: false,
+        includeInstructionFiles: false,
       };
 
       const fileCleaner = new FileCleaner(options, logger);
@@ -277,6 +280,7 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
         includeDirectories: [],
         excludeDefaults: false,
         includeAllCommonPatterns: false,
+        includeInstructionFiles: false,
       };
 
       const fileCleanerWithDefaults = new FileCleaner(
@@ -300,6 +304,7 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
         includeDirectories: [],
         excludeDefaults: true,
         includeAllCommonPatterns: false,
+        includeInstructionFiles: false,
       };
 
       const fileCleanerWithoutDefaults = new FileCleaner(
@@ -338,6 +343,7 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
       includeDirectories: [],
       excludeDefaults: false,
       includeAllCommonPatterns: false,
+      includeInstructionFiles: false,
     };
 
     const fileCleanerWithDefaults = new FileCleaner(
@@ -361,6 +367,7 @@ Deno.test("No Defaults Flag Behavior", async (t) => {
       includeDirectories: [],
       excludeDefaults: true,
       includeAllCommonPatterns: false,
+      includeInstructionFiles: false,
     };
 
     const fileCleanerWithoutDefaults = new FileCleaner(

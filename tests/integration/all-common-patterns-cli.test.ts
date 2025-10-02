@@ -180,8 +180,8 @@ Deno.test("CLI --include-all-common-patterns Integration", async (t) => {
         `Command should succeed. stderr: ${result.stderr}`,
       );
 
-      // Should find default patterns
-      assert(result.stdout.includes("CLAUDE.md"));
+      // Should find default patterns (except CLAUDE.md which is preserved by default)
+      assert(!result.stdout.includes("CLAUDE.md")); // Preserved by default
       assert(result.stdout.includes(".claude"));
 
       // Should NOT find extended patterns

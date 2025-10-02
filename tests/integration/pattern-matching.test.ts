@@ -98,6 +98,7 @@ Deno.test("FileCleaner Pattern Matching Integration", async (t) => {
       includeDirectories: ["claudedocs", ".serena"],
       excludeDefaults: false,
       includeAllCommonPatterns: false,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -113,13 +114,12 @@ Deno.test("FileCleaner Pattern Matching Integration", async (t) => {
     assert(paths.includes("docs/claudedocs"));
     assert(paths.includes("project/.serena"));
 
-    // Check that default patterns are still found
-    assert(paths.includes("CLAUDE.md"));
+    // Check that default patterns are still found (except CLAUDE.md which is preserved by default)
     assert(paths.includes(".claude"));
+    assert(!paths.includes("CLAUDE.md")); // CLAUDE.md is now preserved by default
 
     // Check reasons are correct
     assert(reasons.includes("User-specified directory pattern"));
-    assert(reasons.includes("Claude project configuration file"));
     assert(reasons.includes("Claude configuration directory"));
 
     // Should not find normal directories
@@ -148,6 +148,7 @@ Deno.test("FileCleaner Pattern Matching Integration", async (t) => {
       includeDirectories: [".serena"],
       excludeDefaults: true, // Should skip Claude defaults
       includeAllCommonPatterns: false,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -183,6 +184,7 @@ Deno.test("FileCleaner Pattern Matching Integration", async (t) => {
       includeDirectories: [], // No user patterns
       excludeDefaults: false,
       includeAllCommonPatterns: false,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -190,8 +192,8 @@ Deno.test("FileCleaner Pattern Matching Integration", async (t) => {
 
     const paths = claudeFiles.map((f) => f.path).sort();
 
-    // Should only find default Claude patterns
-    assert(paths.includes("CLAUDE.md"));
+    // Should only find default Claude patterns (except CLAUDE.md which is preserved by default)
+    assert(!paths.includes("CLAUDE.md")); // CLAUDE.md is now preserved by default
     assert(paths.includes(".claude"));
 
     // Should not find normal dirs
@@ -218,6 +220,7 @@ Deno.test("FileCleaner Pattern Matching Integration", async (t) => {
       includeDirectories: ["temp"],
       excludeDefaults: true,
       includeAllCommonPatterns: false,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -254,6 +257,7 @@ Deno.test("FileCleaner Pattern Matching Integration", async (t) => {
       includeDirectories: ["target"],
       excludeDefaults: true,
       includeAllCommonPatterns: false,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -293,6 +297,7 @@ Deno.test("FileCleaner Pattern Matching Integration", async (t) => {
       includeDirectories: ["build", "dist", "cache"],
       excludeDefaults: true,
       includeAllCommonPatterns: false,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, logger);
@@ -309,6 +314,45 @@ Deno.test("FileCleaner Pattern Matching Integration", async (t) => {
     // Should not find non-specified patterns
     assert(!paths.includes("src"));
     assert(!paths.includes("docs"));
+
+    await Deno.remove(repoPath, { recursive: true });
+  });
+
+  await t.step("should include CLAUDE.md with --include-instruction-files flag", async () => {
+    const repoPath = await createTestRepo(tempDir);
+
+    await createDirectoryStructure(repoPath, {
+      "CLAUDE.md": "# Instructions",
+      "docs/CLAUDE.md": "# Doc instructions",
+      ".claude/config.json": "{}",
+      "other.md": "# Other file",
+    });
+
+    const options: FileCleanerOptions = {
+      dryRun: true,
+      verbose: false,
+      repoPath,
+      createBackup: false,
+      includeDirectories: [],
+      excludeDefaults: false,
+      includeAllCommonPatterns: false,
+      includeInstructionFiles: true, // Enable instruction file removal
+    };
+
+    const fileCleaner = new FileCleaner(options, logger);
+    const claudeFiles = await fileCleaner.detectClaudeFiles();
+
+    const paths = claudeFiles.map((f) => f.path).sort();
+
+    // Should now find CLAUDE.md files
+    assert(paths.includes("CLAUDE.md"));
+    assert(paths.includes("docs/CLAUDE.md"));
+
+    // Should still find other default patterns
+    assert(paths.includes(".claude"));
+
+    // Should not find non-Claude files
+    assert(!paths.includes("other.md"));
 
     await Deno.remove(repoPath, { recursive: true });
   });

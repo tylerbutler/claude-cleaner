@@ -322,6 +322,7 @@ export interface FileCleanerOptions {
   includeDirectories: string[];
   excludeDefaults: boolean;
   includeAllCommonPatterns: boolean;
+  includeInstructionFiles: boolean;
 }
 
 export interface ClaudeFile {
@@ -584,8 +585,11 @@ export class FileCleaner {
   private isClaudeFile(relativePath: string): boolean {
     const fileName = basename(relativePath);
 
-    // Claude configuration files
-    if (fileName === "CLAUDE.md") return true;
+    // Claude instruction files - excluded by default unless flag is set
+    if (fileName === "CLAUDE.md") {
+      // Only include if explicitly requested via flag or --include-all-common-patterns
+      return this.options.includeInstructionFiles || this.options.includeAllCommonPatterns;
+    }
 
     // Claude directories
     if (

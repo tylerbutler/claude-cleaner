@@ -5,6 +5,9 @@ This document provides a comprehensive reference of all file patterns that Claud
 > [!NOTE]
 > The patterns listed here are only used when `--include-all-common-patterns` is enabled. Without this flag, only the [standard patterns](README.md#files-removed-standard-mode) are used.
 
+> [!IMPORTANT]
+> **Breaking Change (v0.3.0):** `CLAUDE.md` instruction files are now **preserved by default**. Use `--include-instruction-files` or `--include-all-common-patterns` to remove them.
+
 ## Pattern Matching System
 
 Claude Cleaner uses **exact basename matching** for safety:

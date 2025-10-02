@@ -18,6 +18,7 @@ Deno.test("Pattern Validation", async (t) => {
       includeDirectories,
       excludeDefaults: false,
       includeAllCommonPatterns: false,
+      includeInstructionFiles: false,
     };
     return new FileCleaner(options, logger);
   }
@@ -151,6 +152,7 @@ Deno.test("Pattern Warning System", async (t) => {
       includeDirectories: ["temp", "cache", "a", "build"],
       excludeDefaults: false,
       includeAllCommonPatterns: false,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, mockLogger);
@@ -194,6 +196,7 @@ Deno.test("Pattern Warning System", async (t) => {
       includeDirectories: ["claudedocs", ".serena", "specific-project-dir"],
       excludeDefaults: false,
       includeAllCommonPatterns: false,
+      includeInstructionFiles: false,
     };
 
     const fileCleaner = new FileCleaner(options, mockLogger);
