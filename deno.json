@@ -1,6 +1,6 @@
 {
   "name": "@tylerbu/claude-cleaner",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "description": "Remove Claude artifacts from Git repositories",
   "license": "MIT",
   "exports": "./src/main.ts",
