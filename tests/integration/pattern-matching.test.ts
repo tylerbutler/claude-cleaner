@@ -5,7 +5,6 @@
 import { assert } from "@std/assert";
 import { ensureDir } from "@std/fs";
 import { join } from "@std/path";
-import { $ } from "dax";
 import { FileCleaner, type FileCleanerOptions } from "../../src/file-cleaner.ts";
 import { ConsoleLogger } from "../../src/utils.ts";
 
