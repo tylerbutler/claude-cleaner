@@ -1,8 +1,35 @@
 # claude-cleaner development tasks
 
+# Aliases
+alias pr := ci
+
 # Default recipe: show help
 default:
     @just --list
+
+# Build standalone binary
+build:
+    deno compile --allow-all --output claude-cleaner src/main.ts
+
+# Run all tests
+test:
+    deno test --allow-all
+
+# Format code
+format:
+    deno fmt
+
+# Lint code
+lint:
+    deno lint
+
+# Clean build artifacts
+clean:
+    rm -f claude-cleaner
+    rm -f deno.lock
+
+# CI checks: format check, lint, type check, and test
+ci: _format-check lint _type-check test
 
 # Run the tool with help
 help:
@@ -20,14 +47,6 @@ dry-run *args:
 check-deps:
     deno run --allow-all src/main.ts check-deps
 
-# Build standalone binary
-build:
-    deno compile --allow-all --output claude-cleaner src/main.ts
-
-# Run all tests
-test:
-    deno test --allow-all
-
 # Run unit tests only
 test-unit:
     deno run --allow-all tests/run-all-tests.ts --unit-only
@@ -39,33 +58,6 @@ test-integration:
 # Run tests with verbose output
 test-verbose:
     deno run --allow-all tests/run-all-tests.ts --verbose
-
-# Format code
-fmt:
-    deno fmt
-
-# Check formatting without making changes
-fmt-check:
-    deno fmt --check
-
-# Lint code
-lint:
-    deno lint
-
-# Type check
-check:
-    deno check
-
-# Run all quality checks (format, lint, type check)
-qa: fmt-check lint check
-
-# Clean build artifacts
-clean:
-    rm -f claude-cleaner
-    rm -f deno.lock
-
-# Development: format, lint, check, and test
-dev: fmt lint check test
 
 # Install the tool globally (requires sudo/admin on some systems)
 install: build
@@ -79,3 +71,11 @@ uninstall:
 version:
     @echo "claude-cleaner v0.1.0"
     @deno --version
+
+# Private: Check formatting without making changes
+_format-check:
+    deno fmt --check
+
+# Private: Type check
+_type-check:
+    deno check
