@@ -95,6 +95,9 @@ See [PATTERNS.md](PATTERNS.md) for the complete pattern reference with examples 
 - **`Co-Authored-By: Claude <noreply@anthropic.com>`** - Co-authorship attributions
 - **Other Claude attribution lines** - Additional Claude-generated metadata
 
+> [!NOTE]
+> Matching is line-anchored and scoped to the terminal metadata/trailer block at the end of a commit message. A line must exactly match a known attribution pattern to be removed, and only within that trailing block — ordinary body prose that happens to mention "Claude" or the 🤖 emoji is never touched, and non-Claude trailers (e.g. `Signed-off-by`) are preserved.
+
 ## Installation
 
 ### Prerequisites
@@ -300,13 +303,13 @@ Claude Cleaner uses two different backup strategies depending on the operation, 
 When removing files (`--files-only` or the file phase of full mode):
 
 - **Strategy**: Creates a complete **bare clone** in a separate directory
-- **Location**: `../<repo-name>-backup-<timestamp>` (outside your repository)
+- **Location**: `../claude-cleaner-backup-<timestamp>` (outside your repository)
 - **Protection**: Since file cleaning rewrites commits and updates all refs in the target repository, the bare clone remains completely untouched as a separate physical repository
 - **Recovery**: `git clone` the backup directory to restore
 
 ```bash
 # Example backup location
-/path/to/your-repo/.../your-repo-backup-2024-01-15T10-30-00-000Z
+/path/to/your-repo/.../claude-cleaner-backup-2024-01-15T10-30-00-000Z
 ```
 
 #### Commit Cleaning Backups (Branch)
@@ -429,15 +432,15 @@ git log --oneline -10
 
 ```bash
 # List backup directories (in parent directory)
-ls -d ../your-repo-backup-*
+ls -d ../claude-cleaner-backup-*
 
 # Clone the backup to restore
 cd ..
-git clone your-repo-backup-2024-01-15T10-30-00-000Z your-repo-restored
+git clone claude-cleaner-backup-2024-01-15T10-30-00-000Z your-repo-restored
 
 # Or replace your current repository
 rm -rf your-repo
-git clone your-repo-backup-2024-01-15T10-30-00-000Z your-repo
+git clone claude-cleaner-backup-2024-01-15T10-30-00-000Z your-repo
 
 # Verify restoration
 cd your-repo
@@ -488,7 +491,7 @@ git clone <repository-url>
 ### Compatibility
 
 **Q: What operating systems are supported?**\
-**A:** Windows, macOS, and Linux are all supported, but Windows is not well-tested.
+**A:** Windows, macOS, and Linux are all supported. CI runs the full test suite on all three platforms, and Windows additionally has a dedicated gate that exercises real `git filter-branch` commit-cleaning through the CLI (self-invocation is most likely to hit shell/path differences there).
 
 ### Usage Options
 

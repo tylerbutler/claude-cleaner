@@ -132,21 +132,21 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 
 ### Test Organization
 
-- **Unit tests** (`tests/unit/`): Module-level testing without Git operations
-- **Integration tests** (`tests/integration/`): Full workflow tests with real Git repositories
+- **Unit tests** (`tests/unit/`): Module-level testing; many use real temporary Git repositories for realistic coverage without going through the full CLI
+- **Integration tests** (`tests/integration/`): Full workflow tests that spawn the real CLI/binary against real Git repositories
 - **Test utilities** (`tests/utils/`): Fixtures and helpers for test setup
 
 ### Key Test Coverage
 
 - Pattern matching: 41 test steps covering all directory patterns
 - Dry-run mode: Ensures no changes are made without `--execute`
-- Dependency management: Auto-install, version checking, path resolution
+- Dependency management: Git-only detection/reporting and the `--auto-install` no-op
 - Error handling: Invalid options, missing dependencies, dirty working tree
 - Cross-platform: Windows, macOS, Linux compatibility tests
 
 ### Test Fixtures
 
-- Located in `tests/fixtures/`
+- Located in `tests/utils/fixtures.ts` (and `tests/utils/test-helpers.ts`)
 - Git repositories created programmatically for each test
 - Cleaned up automatically after test completion
 
@@ -189,7 +189,7 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 
 **Development Tools**:
 
-- Deno 1.x: TypeScript runtime and toolchain
+- Deno 2.x: TypeScript runtime and toolchain
 - mise: Development tool version management (optional, for pinning Deno)
 
 ## TypeScript Configuration

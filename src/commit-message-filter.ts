@@ -96,8 +96,11 @@ function isTerminalRegionLine(line: string): boolean {
 }
 
 export interface CommitMessageFilterResult {
-  /** The message with terminal-region Claude attribution removed. Always
-   * non-empty and terminated by a single trailing newline. */
+  /** The message with terminal-region Claude attribution removed. When
+   * `removedLines` is non-empty, this is spacing-normalized, non-empty, and
+   * terminated by a single trailing newline. When nothing was removed, this
+   * is the original `message` returned verbatim (including its original
+   * trailing-newline/blank-line formatting, whatever that was). */
   cleanedMessage: string;
   /** Each physical attribution line that was removed, in original order.
    * Length is the exact count of removed lines (each counted once). */
