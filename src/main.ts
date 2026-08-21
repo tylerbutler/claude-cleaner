@@ -2,6 +2,7 @@ import { Command } from "@cliffy/command";
 import { CommitCleaner } from "./commit-cleaner.ts";
 import { DependencyManager } from "./dependency-manager.ts";
 import { FileCleaner } from "./file-cleaner.ts";
+import { isInternalFilterInvocation, runInternalFilter } from "./internal-filter.ts";
 import {
   AppError,
   checkForMissingDependencies,
@@ -424,6 +425,15 @@ async function getSdPath(depManager: DependencyManager): Promise<string> {
 }
 
 async function main() {
+  // Internal self-invocation used as a `git filter-branch` filter (see
+  // src/internal-filter.ts). Intercepted before Cliffy parses arguments so
+  // this mode never appears in --help and can't collide with real
+  // subcommands or the repo-path positional argument.
+  if (isInternalFilterInvocation(Deno.args)) {
+    const exitCode = await runInternalFilter(Deno.args.slice(1));
+    Deno.exit(exitCode);
+  }
+
   try {
     await new Command()
       .name("claude-cleaner")
