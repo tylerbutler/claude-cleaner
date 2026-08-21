@@ -280,7 +280,7 @@ All binaries are attached to the GitHub release and the package is published to 
 
 The release process is configured via:
 
-- `.releaserc.json` - semantic-release plugin configuration
+- `release.config.mjs` - semantic-release plugin configuration
 - `package.json` - npm dependencies for semantic-release
 - `.github/workflows/release.yml` - GitHub Actions workflow
 
@@ -367,7 +367,7 @@ If dry-run mode doesn't work as expected:
 npx semantic-release --dry-run
 
 # Check configuration
-cat .releaserc.json
+cat release.config.mjs
 
 # Verify conventional commits
 git log --oneline -10
