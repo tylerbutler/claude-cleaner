@@ -74,11 +74,19 @@ Deno.test("parseInternalFilterArgs", async (t) => {
   });
 });
 
+/** `resolveSelfInvocation` converts a `file://` main-module URL into a native
+ * path via `fromFileUrl`, so the expected script argument is platform-specific:
+ * `\repo\src\main.ts` on Windows, `/repo/src/main.ts` elsewhere. */
+const MAIN_MODULE_URL = "file:///repo/src/main.ts";
+const EXPECTED_SCRIPT_PATH = Deno.build.os === "windows"
+  ? "\\repo\\src\\main.ts"
+  : "/repo/src/main.ts";
+
 Deno.test("resolveSelfInvocation - deno run (non-standalone)", async (t) => {
   await t.step("re-supplies the deno executable, run, permissions, and script path", () => {
     const invocation = resolveSelfInvocation("msg-filter", [], {
       execPath: "/usr/bin/deno",
-      mainModuleUrl: "file:///repo/src/main.ts",
+      mainModuleUrl: MAIN_MODULE_URL,
       standalone: false,
     });
 
@@ -86,7 +94,7 @@ Deno.test("resolveSelfInvocation - deno run (non-standalone)", async (t) => {
     assertEquals(invocation.args, [
       "run",
       "--allow-all",
-      "/repo/src/main.ts",
+      EXPECTED_SCRIPT_PATH,
       INTERNAL_FILTER_MARKER,
       "msg-filter",
     ]);
@@ -95,14 +103,14 @@ Deno.test("resolveSelfInvocation - deno run (non-standalone)", async (t) => {
   await t.step("passes through extra args (e.g. a manifest path) after the mode", () => {
     const invocation = resolveSelfInvocation("index-filter", ["/tmp/manifest"], {
       execPath: "/usr/bin/deno",
-      mainModuleUrl: "file:///repo/src/main.ts",
+      mainModuleUrl: MAIN_MODULE_URL,
       standalone: false,
     });
 
     assertEquals(invocation.args, [
       "run",
       "--allow-all",
-      "/repo/src/main.ts",
+      EXPECTED_SCRIPT_PATH,
       INTERNAL_FILTER_MARKER,
       "index-filter",
       "/tmp/manifest",
@@ -149,7 +157,7 @@ Deno.test("buildSelfInvocationCommand", async (t) => {
   await t.step("shell-escapes every token of the resolved invocation", () => {
     const invocation = resolveSelfInvocation("index-filter", ["/tmp/my manifest"], {
       execPath: "/usr/bin/deno",
-      mainModuleUrl: "file:///repo/src/main.ts",
+      mainModuleUrl: MAIN_MODULE_URL,
       standalone: false,
     });
 
@@ -166,7 +174,7 @@ Deno.test("buildSelfInvocationCommand", async (t) => {
   await t.step("buildSelfInvocationCommandForMode matches resolve + build composition", () => {
     const overrides = {
       execPath: "/usr/bin/deno",
-      mainModuleUrl: "file:///repo/src/main.ts",
+      mainModuleUrl: MAIN_MODULE_URL,
       standalone: false,
     };
     const composed = buildSelfInvocationCommandForMode("msg-filter", [], overrides);
