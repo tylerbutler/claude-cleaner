@@ -36,6 +36,22 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERBOSE: "true"
 
+      # `deno task test` above already discovers these via tests/**/*.test.ts,
+      # but Windows is where a `git filter-branch --msg-filter` self-invocation
+      # is most likely to break (shell quoting, path separators, line endings).
+      # This explicit, separately named step makes that real commit-cleaning
+      # coverage a visible, individually reportable gate on Windows, rather
+      # than being buried inside the full suite run.
+      - name: Windows commit-cleaning integration gate
+        if: runner.os == 'Windows'
+        run: >-
+          deno test --allow-all
+          tests/integration/commit-message-filtering.test.ts
+          tests/integration/commit-branch-scoping.test.ts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERBOSE: "true"
+
   quality:
     name: Code Quality
     runs-on: ubuntu-latest
