@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Claude Cleaner is a TypeScript/Deno tool that removes Claude artifacts (files and commit trailers) from Git repositories. It uses BFG Repo-Cleaner for file removal and git filter-branch with sd for commit message cleaning.
+Claude Cleaner is a TypeScript/Deno tool that removes Claude artifacts (files and commit trailers) from Git repositories. It uses `git filter-branch` for both file removal (via an internal index-filter self-invocation) and commit message cleaning (via an internal msg-filter self-invocation).
 
 ## Essential Commands
 
@@ -77,7 +77,7 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 
 - Removes Claude trailers from commit messages
 - Patterns: `🤖 Generated with [Claude Code]`, `Co-Authored-By: Claude <...>`
-- Uses git filter-branch with sd for text replacement
+- Uses `git filter-branch --msg-filter` wired to the program's own hidden self-invocation (no external script/Bash wrapper); message parsing is delegated to the shared `commit-message-filter.ts`
 - Key methods: `cleanCommits()`, `createBackup()`, `validateGitRepository()`
 
 ### Pattern System
@@ -114,11 +114,11 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 
 ### Commit Cleaning Process
 
-1. Analyze commit history for Claude trailers
+1. Analyze commit history with the shared `commit-message-filter.ts` parser (same logic used to rewrite)
 2. Create backup branch (if `--execute`)
-3. Generate git filter-branch command with sd replacements
-4. Apply sd patterns to remove each trailer type
-5. Verify changes and clean up backup refs
+3. Run `git filter-branch -f --msg-filter '<self-invocation>' <range>`, where the filter re-invokes this program's hidden `__internal-filter msg-filter` mode
+4. The filter reads each commit message on stdin and writes the cleaned message to stdout (attribution removed only from the terminal trailer region)
+5. Verify targeted trailers are gone from the rewritten range and clean up backup refs
 
 ### Pattern Matching Logic (`file-cleaner.ts`)
 
@@ -159,9 +159,9 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 
 ### Modifying Commit Trailer Patterns
 
-1. Edit `claudeTrailerPatterns` array in `commit-cleaner.ts`
-2. Add test cases in `tests/unit/commit-cleaner.test.ts`
-3. Ensure patterns use proper regex escaping for `sd` tool
+1. Edit the `CLAUDE_ATTRIBUTION_PATTERNS` array in `commit-message-filter.ts` (the single shared parser used by both commit analysis and the internal `git filter-branch --msg-filter` self-invocation)
+2. Keep patterns line-anchored (match a whole physical line) so ordinary body prose that merely mentions Claude is never removed
+3. Add test cases in `tests/unit/commit-message-filter.test.ts`
 
 ### Testing New Features
 

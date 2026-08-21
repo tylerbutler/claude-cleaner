@@ -59,7 +59,7 @@ async function runMain(
 
 Deno.test("Internal filter self-invocation - deno run entry point", async (t) => {
   await t.step(
-    "__internal-filter msg-filter reads stdin and writes filtered output to stdout",
+    "__internal-filter msg-filter reads stdin and writes the cleaned message to stdout",
     async () => {
       const input = "Fix bug\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n";
       const result = await runMain(["__internal-filter", "msg-filter"], {
@@ -67,7 +67,9 @@ Deno.test("Internal filter self-invocation - deno run entry point", async (t) =>
       });
 
       assert(result.success, `stderr: ${result.stderr}`);
-      assertEquals(result.stdout, input);
+      // The msg-filter now delegates to the shared parser, which strips the
+      // terminal Claude co-author trailer and preserves the subject.
+      assertEquals(result.stdout, "Fix bug\n");
     },
   );
 

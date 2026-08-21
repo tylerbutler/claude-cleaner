@@ -201,9 +201,14 @@ Deno.test("readManifestFile", async (t) => {
   });
 });
 
-Deno.test("filterCommitMessage", async (t) => {
-  await t.step("is currently an identity pass-through (Task 4 seam)", () => {
+Deno.test("filterCommitMessage (re-exported shared parser)", async (t) => {
+  await t.step("removes terminal Claude attribution and preserves the subject", () => {
     const message = "Some commit message\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n";
+    assertEquals(filterCommitMessage(message), "Some commit message\n");
+  });
+
+  await t.step("leaves a message with no Claude attribution unchanged", () => {
+    const message = "Just a normal commit\n\nWith a body.\n";
     assertEquals(filterCommitMessage(message), message);
   });
 });

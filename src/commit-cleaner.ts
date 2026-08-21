@@ -1,17 +1,13 @@
 import { $ } from "dax";
+import { filterClaudeAttribution } from "./commit-message-filter.ts";
+import { buildSelfInvocationCommandForMode } from "./internal-filter.ts";
 import type { Logger } from "./utils.ts";
-import { AppError, escapeShellArg, formatGitRef } from "./utils.ts";
+import { AppError, formatGitRef } from "./utils.ts";
 
 export interface CommitCleanOptions {
   dryRun?: boolean | undefined;
   verbose?: boolean | undefined;
   branchToClean?: string | undefined;
-}
-
-export interface ClaudeTrailerPattern {
-  name: string;
-  pattern: string;
-  description: string;
 }
 
 export interface CommitCleanResult {
@@ -31,29 +27,6 @@ export interface CommitPreview {
 }
 
 export class CommitCleaner {
-  private readonly claudeTrailerPatterns: ClaudeTrailerPattern[] = [
-    {
-      name: "claude-code-generated",
-      pattern: "🤖 Generated with \\[Claude Code\\]\\([^)]+\\)",
-      description: "Claude Code generation attribution",
-    },
-    {
-      name: "claude-coauthor",
-      pattern: "Co-Authored-By: Claude <noreply@anthropic\\.com>",
-      description: "Claude co-author trailer",
-    },
-    {
-      name: "claude-emoji-attribution",
-      pattern: "🤖[^\\n]*Claude[^\\n]*",
-      description: "Claude emoji attribution lines",
-    },
-    {
-      name: "claude-generated-generic",
-      pattern: "Generated with Claude[^\\n]*",
-      description: "Generic Claude generation attribution",
-    },
-  ];
-
   constructor(
     private readonly logger: Logger,
     private readonly sdPath: string = "sd",
@@ -113,8 +86,9 @@ export class CommitCleaner {
           analysis.earliestCommitWithTrailer,
         );
 
+        const filterCommand = buildSelfInvocationCommandForMode("msg-filter");
         this.logger.info(
-          `  git filter-branch -f --msg-filter <clean-script> ${revisionRange}`,
+          `  git filter-branch -f --msg-filter '${filterCommand}' ${revisionRange}`,
         );
       }
 
@@ -180,11 +154,13 @@ export class CommitCleaner {
 
     for (const commit of commits) {
       const originalMessage = await this.getCommitMessage(commit.sha);
-      const { cleanedMessage, trailersFound } = this.cleanCommitMessage(originalMessage);
+      const { cleanedMessage, removedLines } = filterClaudeAttribution(originalMessage);
 
-      if (trailersFound.length > 0) {
+      if (removedLines.length > 0) {
         commitsWithTrailers++;
-        totalTrailersRemoved += trailersFound.length;
+        // Each entry in removedLines is one physical attribution line, so the
+        // count is exact (no double-counting from overlapping patterns).
+        totalTrailersRemoved += removedLines.length;
         // Track the earliest commit (last in chronological order since rev-list returns newest-first)
         earliestCommitWithTrailer = commit.sha;
 
@@ -193,7 +169,7 @@ export class CommitCleaner {
           shortSha: formatGitRef(commit.sha),
           originalMessage,
           cleanedMessage,
-          trailersFound,
+          trailersFound: removedLines,
         });
       }
     }
@@ -329,37 +305,6 @@ export class CommitCleaner {
     }
   }
 
-  private cleanCommitMessage(message: string): {
-    cleanedMessage: string;
-    trailersFound: string[];
-  } {
-    let cleanedMessage = message;
-    const trailersFound: string[] = [];
-
-    for (const pattern of this.claudeTrailerPatterns) {
-      const regex = new RegExp(pattern.pattern, "gm");
-      const matches = message.match(regex);
-
-      if (matches) {
-        trailersFound.push(...matches);
-        cleanedMessage = cleanedMessage.replace(regex, "");
-      }
-    }
-
-    // Clean up multiple consecutive newlines and trim
-    cleanedMessage = cleanedMessage
-      .replace(/\n{3,}/g, "\n\n") // Replace 3+ newlines with 2
-      .replace(/\n\s*\n\s*$/g, "\n") // Remove trailing newlines and whitespace
-      .trim();
-
-    // Ensure there's exactly one newline at the end if the message isn't empty
-    if (cleanedMessage && !cleanedMessage.endsWith("\n")) {
-      cleanedMessage += "\n";
-    }
-
-    return { cleanedMessage, trailersFound };
-  }
-
   private async executeCommitCleaning(
     branch: string,
     revisionRange: string,
@@ -367,24 +312,6 @@ export class CommitCleaner {
     earliestCommitWithTrailer?: string,
   ): Promise<void> {
     try {
-      // Create a TypeScript script for the msg-filter that's more reliable than shell scripts
-      const tempDir = await Deno.makeTempDir({ prefix: "claude-cleaner-" });
-      const scriptPath = `${tempDir}/clean-msg.ts`;
-
-      // Create the cleaning script in TypeScript
-      const scriptContent = this.generateTypeScriptCleaningScript();
-      await Deno.writeTextFile(scriptPath, scriptContent);
-
-      this.logger.verbose(`Created TypeScript cleaning script: ${scriptPath}`);
-
-      // Create a wrapper shell script that calls deno
-      const wrapperPath = `${tempDir}/clean-msg.sh`;
-      const wrapperContent = `#!/bin/bash
-deno run --allow-read "${scriptPath}"
-`;
-      await Deno.writeTextFile(wrapperPath, wrapperContent);
-      await Deno.chmod(wrapperPath, 0o755);
-
       // `branch` and `revisionRange` were resolved once by the caller
       // (resolveBranch() + buildRevisionRange()) — they must never be
       // re-derived from the currently checked-out HEAD here, otherwise a
@@ -404,24 +331,24 @@ deno run --allow-read "${scriptPath}"
         }
       }
 
-      // Execute git filter-branch with our TypeScript-based cleaning script.
-      // Passing the resolved ref (not HEAD) means filter-branch updates that
-      // ref directly without touching the current checkout.
-      const filterBranchCmd = `git filter-branch -f --msg-filter ${
-        escapeShellArg(
-          wrapperPath,
-        )
-      } ${revisionRange}`;
-      this.logger.info(`Running: ${filterBranchCmd}`);
-      const filterBranchResult = await $`git filter-branch -f --msg-filter ${
-        escapeShellArg(
-          wrapperPath,
-        )
-      } ${revisionRange}`
-        .cwd(this.repoPath)
-        .stdout("piped")
-        .stderr("piped")
-        .noThrow();
+      // Git evaluates the --msg-filter value as a shell command once per
+      // rewritten commit; the self-invocation re-enters this program's hidden
+      // msg-filter mode, which reads the commit message on stdin and writes the
+      // cleaned message to stdout. This needs no temporary script, no chmod,
+      // and no external Deno runtime for compiled binaries. Passing the
+      // resolved ref (not HEAD) means filter-branch updates that ref directly
+      // without touching the current checkout.
+      const filterCommand = buildSelfInvocationCommandForMode("msg-filter");
+      this.logger.info(
+        `Running: git filter-branch -f --msg-filter '${filterCommand}' ${revisionRange}`,
+      );
+      const filterBranchResult =
+        await $`git filter-branch -f --msg-filter ${filterCommand} ${revisionRange}`
+          .cwd(this.repoPath)
+          .env("FILTER_BRANCH_SQUELCH_WARNING", "1")
+          .stdout("piped")
+          .stderr("piped")
+          .noThrow();
 
       if (filterBranchResult.code !== 0) {
         throw new AppError(
@@ -430,9 +357,6 @@ deno run --allow-read "${scriptPath}"
           new Error(filterBranchResult.stderr),
         );
       }
-
-      // Clean up temporary files
-      await Deno.remove(tempDir, { recursive: true });
 
       this.logger.verbose("git filter-branch completed successfully");
     } catch (error) {
@@ -445,91 +369,6 @@ deno run --allow-read "${scriptPath}"
         error as Error,
       );
     }
-  }
-
-  private generateTypeScriptCleaningScript(): string {
-    // Generate a TypeScript script that performs the same cleaning logic
-    // This avoids shell escaping issues and is more reliable
-
-    return `// Claude Cleaner commit message filter script (TypeScript)
-// This script removes Claude-related trailers from commit messages
-
-const claudeTrailerPatterns = [
-  {
-    name: "claude-code-generated",
-    pattern: /🤖 Generated with \\[Claude Code\\]\\([^)]+\\)/gm,
-    description: "Claude Code generation attribution"
-  },
-  {
-    name: "claude-coauthor", 
-    pattern: /Co-Authored-By: Claude <noreply@anthropic\\.com>/gm,
-    description: "Claude co-author trailer"
-  },
-  {
-    name: "claude-emoji-attribution",
-    pattern: /🤖[^\\n]*Claude[^\\n]*/gm,
-    description: "Claude emoji attribution lines"
-  },
-  {
-    name: "claude-generated-generic",
-    pattern: /Generated with Claude[^\\n]*/gm,
-    description: "Generic Claude generation attribution"
-  }
-];
-
-function cleanCommitMessage(message: string): string {
-  let cleanedMessage = message;
-  
-  // Apply each pattern to remove Claude trailers
-  for (const pattern of claudeTrailerPatterns) {
-    cleanedMessage = cleanedMessage.replace(pattern.pattern, '');
-  }
-  
-  // Clean up multiple consecutive newlines and trim
-  cleanedMessage = cleanedMessage
-    .replace(/\\n{3,}/g, '\\n\\n')  // Replace 3+ newlines with 2
-    .replace(/\\n\\s*\\n\\s*$/g, '\\n')  // Remove trailing newlines and whitespace
-    .trim();
-  
-  // Ensure there's exactly one newline at the end if the message isn't empty
-  if (cleanedMessage && !cleanedMessage.endsWith('\\n')) {
-    cleanedMessage += '\\n';
-  }
-  
-  return cleanedMessage;
-}
-
-// Read commit message from stdin
-const reader = Deno.stdin.readable.getReader();
-const chunks: Uint8Array[] = [];
-try {
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-  }
-} finally {
-  reader.releaseLock();
-}
-
-// Combine chunks into a single array
-const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-const input = new Uint8Array(totalLength);
-let offset = 0;
-for (const chunk of chunks) {
-  input.set(chunk, offset);
-  offset += chunk.length;
-}
-
-const decoder = new TextDecoder();
-const message = decoder.decode(input);
-
-// Clean the message and output result
-const cleanedMessage = cleanCommitMessage(message);
-if (cleanedMessage.trim()) {
-  Deno.stdout.write(new TextEncoder().encode(cleanedMessage));
-}
-`;
   }
 
   async validateGitRepository(): Promise<void> {

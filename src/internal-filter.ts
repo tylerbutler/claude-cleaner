@@ -19,13 +19,14 @@
  * passed to `git` as a real argument array via `Deno.Command`, never
  * interpolated into a shell string.
  *
- * This module intentionally implements only the dispatch/self-invocation
- * seam. The real commit-message trailer parser (Task 4) and exact-path
- * removal planning (Task 2) plug in behind `filterCommitMessage` and
- * `removeExactPaths` respectively.
+ * This module implements the dispatch/self-invocation seam. Commit-message
+ * trailer parsing lives in `commit-message-filter.ts` (shared with commit
+ * analysis) and is re-exposed here as `filterCommitMessage`; exact-path
+ * removal planning (Task 2) plugs in behind `removeExactPaths`.
  */
 
 import { fromFileUrl } from "@std/path";
+import { filterCommitMessage } from "./commit-message-filter.ts";
 import type { Logger } from "./utils.ts";
 import { AppError, ConsoleLogger, escapeShellArg } from "./utils.ts";
 
@@ -187,14 +188,12 @@ export async function readManifestFile(path: string): Promise<string[]> {
 }
 
 /**
- * Placeholder seam for commit-message filtering. Currently an identity
- * pass-through so the `msg-filter` dispatch path is real and testable
- * end-to-end without duplicating the trailer-removal logic that Task 4 will
- * implement in its final form.
+ * Commit-message filtering seam used by `msg-filter` mode. Delegates to the
+ * shared parser in `commit-message-filter.ts` — the single source of truth
+ * also used by commit analysis/preview — and is re-exported so importers and
+ * `runInternalFilter` share one stable entry point.
  */
-export function filterCommitMessage(message: string): string {
-  return message;
-}
+export { filterCommitMessage };
 
 /**
  * Upper bound on how many paths are passed to a single `git rm` invocation.
