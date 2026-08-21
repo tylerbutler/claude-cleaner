@@ -1,7 +1,8 @@
 import { Command } from "@cliffy/command";
+import { resolve } from "@std/path";
 import { CommitCleaner } from "./commit-cleaner.ts";
 import { DependencyManager } from "./dependency-manager.ts";
-import { FileCleaner } from "./file-cleaner.ts";
+import { type ClaudeFile, FileCleaner } from "./file-cleaner.ts";
 import { isInternalFilterInvocation, runInternalFilter } from "./internal-filter.ts";
 import {
   AppError,
@@ -51,12 +52,7 @@ function createFileCleaner(
 }
 
 function displayClaudeFiles(
-  claudeFiles: {
-    path: string;
-    type: "file" | "directory";
-    reason: string;
-    earliestCommit?: { hash: string; date: string; message: string };
-  }[],
+  claudeFiles: ClaudeFile[],
   logger: ConsoleLogger,
 ): void {
   logger.info(`📄 Found ${claudeFiles.length} Claude files:`);
@@ -74,25 +70,69 @@ function displayClaudeFiles(
   }
 }
 
+/**
+ * Runs (or, in dry-run, previews) file removal for an already-detected plan.
+ * In execute mode it validates a clean tracked working tree and creates the
+ * backup before rewriting history — unless `workingTreeAlreadyValidated` is
+ * set, which full mode uses because its preflight validated the tree once for
+ * both the file- and commit-cleaning passes.
+ */
+async function executeFilePlan(
+  fileCleaner: FileCleaner,
+  claudeFiles: ClaudeFile[],
+  isDryRun: boolean,
+  logger: ConsoleLogger,
+  opts: { workingTreeAlreadyValidated?: boolean } = {},
+): Promise<void> {
+  if (claudeFiles.length === 0) {
+    logger.info("No Claude files found in repository");
+    return;
+  }
+
+  displayClaudeFiles(claudeFiles, logger);
+
+  if (isDryRun) {
+    // Real planning path: prints the exact paths/refs/commands a real run
+    // would execute, without mutating anything.
+    await fileCleaner.removeFiles(claudeFiles);
+    return;
+  }
+
+  // History rewriting requires a clean tracked working tree; verify it before
+  // creating a backup so a dirty repo fails without side effects.
+  if (!opts.workingTreeAlreadyValidated) {
+    await fileCleaner.validateWorkingTreeClean();
+  }
+  await fileCleaner.createBackup();
+  await fileCleaner.removeFiles(claudeFiles);
+}
+
 async function cleanAction(
   options: CleanOptions,
-  repoPath?: string,
+  repoPathArg?: string,
 ) {
   const logger = new ConsoleLogger(options.verbose);
   const depManager = new DependencyManager(logger);
 
   try {
-    if (!repoPath) {
+    if (!repoPathArg) {
       throw new AppError(
         "Repository path is required. Usage: claude-cleaner <path>\nExample: claude-cleaner . (for current directory)",
         "REPO_PATH_REQUIRED",
       );
     }
 
+    // Normalize to an absolute path up front so bare-clone backups and every
+    // `git` invocation (which run with `cwd` set to the repo) behave the same
+    // regardless of the process's current directory or a relative argument
+    // such as `.`.
+    const repoPath = resolve(repoPathArg);
+
     // Default to dry-run mode unless --execute flag is provided
     const isDryRun = !options.execute;
 
     logger.verbose("System info: " + JSON.stringify(getSystemInfo()));
+    logger.verbose(`Target repository: ${repoPath}`);
 
     if (isDryRun) {
       logger.info(
@@ -123,148 +163,27 @@ async function cleanAction(
       );
     }
 
+    // `--auto-install` is a deprecated no-op: claude-cleaner now needs only
+    // Git (which it does not install), so there is nothing to auto-install.
+    // The flag is still accepted for backward compatibility.
     if (options.autoInstall) {
-      logger.info("Auto-install mode enabled - installing dependencies...");
-      await depManager.installAllDependencies();
-      logger.info("Dependencies installed successfully");
+      logger.warn(
+        "--auto-install is deprecated and no longer installs anything. " +
+          "claude-cleaner now requires only Git, which it does not install; " +
+          "the flag is accepted for backward compatibility and has no effect.",
+      );
     }
 
+    // Git is the only external dependency now; verify it once for every mode.
+    const depResults = await depManager.checkAllDependencies();
+    checkForMissingDependencies(depResults, isDryRun, logger);
+
     if (options.filesOnly) {
-      logger.info("Files-only mode: Scanning for Claude files...");
-
-      // Check dependencies are available for file cleaning
-      const depResults = await depManager.checkAllDependencies();
-      checkForMissingDependencies(depResults, isDryRun, logger);
-
-      // Collect directory patterns from CLI and file
-      const includeDirs = await loadDirectoryPatterns(
-        options.includeDirs,
-        options.includeDirsFile,
-        logger,
-      );
-
-      const fileCleaner = createFileCleaner(
-        isDryRun,
-        options,
-        repoPath,
-        includeDirs,
-        logger,
-      );
-
-      try {
-        await fileCleaner.validateRepository();
-        const claudeFiles = await fileCleaner.detectClaudeFiles();
-
-        if (claudeFiles.length === 0) {
-          logger.info("No Claude files found in repository");
-          return;
-        }
-
-        displayClaudeFiles(claudeFiles, logger);
-
-        if (isDryRun) {
-          await fileCleaner.removeFiles(claudeFiles);
-          logger.info(
-            "\nDry-run complete. Use --execute to remove these files.",
-          );
-        } else {
-          // Actually remove the files
-          await fileCleaner.cleanFiles();
-        }
-      } catch (error) {
-        if (error instanceof AppError && error.code === "NOT_GIT_REPO") {
-          logger.error(`Not a Git repository: ${repoPath}`);
-          logger.info(
-            "Please specify a valid Git repository path as the first argument",
-          );
-        } else {
-          throw error;
-        }
-      }
+      await handleFilesOnly(options, repoPath, isDryRun, logger);
     } else if (options.commitsOnly) {
-      logger.info("Commits-only mode: Cleaning commit messages...");
-      await handleCommitCleaning(
-        { ...options, execute: options.execute },
-        logger,
-        depManager,
-        repoPath,
-      );
+      await handleCommitsOnly(options, repoPath, isDryRun, logger);
     } else {
-      // Full cleaning mode - both files and commits
-      logger.info(
-        "Full cleaning mode: removing Claude files and cleaning commit messages...",
-      );
-
-      // Check dependencies are available
-      const depResults = await depManager.checkAllDependencies();
-      checkForMissingDependencies(depResults, isDryRun, logger);
-
-      // Step 1: File cleaning
-      logger.info("\n📁 Step 1: Scanning for Claude files...");
-
-      // Collect directory patterns from CLI and file
-      const includeDirs = await loadDirectoryPatterns(
-        options.includeDirs,
-        options.includeDirsFile,
-        logger,
-      );
-
-      const fileCleaner = createFileCleaner(
-        isDryRun,
-        options,
-        repoPath,
-        includeDirs,
-        logger,
-      );
-
-      try {
-        await fileCleaner.validateRepository();
-        const claudeFiles = await fileCleaner.detectClaudeFiles();
-
-        if (claudeFiles.length === 0) {
-          logger.info("No Claude files found in repository");
-        } else {
-          displayClaudeFiles(claudeFiles, logger);
-
-          if (isDryRun) {
-            await fileCleaner.removeFiles(claudeFiles);
-            logger.info(
-              "\nFile scan complete. Use --execute to remove these files.",
-            );
-          } else {
-            // Actually remove the files
-            await fileCleaner.cleanFiles();
-          }
-        }
-      } catch (error) {
-        if (error instanceof AppError && error.code === "NOT_GIT_REPO") {
-          logger.error(`Not a Git repository: ${repoPath}`);
-          logger.info(
-            "Please run this command from within a Git repository or specify a path: claude-cleaner <path>",
-          );
-          throw error;
-        } else {
-          throw error;
-        }
-      }
-
-      // Step 2: Commit message cleaning
-      logger.info("\n💬 Step 2: Cleaning commit messages...");
-      await handleCommitCleaning(
-        { ...options, execute: options.execute },
-        logger,
-        depManager,
-        repoPath,
-      );
-
-      // Summary
-      if (isDryRun) {
-        logger.info(
-          "\nFull dry-run complete. Use --execute to apply all changes (files + commits).",
-        );
-      } else {
-        logger.info("\nFull cleaning completed successfully!");
-      }
+      await handleFullCleaning(options, repoPath, isDryRun, logger);
     }
   } catch (error) {
     if (error instanceof AppError) {
@@ -278,6 +197,165 @@ async function cleanAction(
       );
     }
     throw error;
+  }
+}
+
+async function handleFilesOnly(
+  options: CleanOptions,
+  repoPath: string,
+  isDryRun: boolean,
+  logger: ConsoleLogger,
+): Promise<void> {
+  logger.info("Files-only mode: Scanning for Claude files...");
+
+  const includeDirs = await loadDirectoryPatterns(
+    options.includeDirs,
+    options.includeDirsFile,
+    logger,
+  );
+
+  const fileCleaner = createFileCleaner(
+    isDryRun,
+    options,
+    repoPath,
+    includeDirs,
+    logger,
+  );
+
+  try {
+    await fileCleaner.validateRepository();
+    const claudeFiles = await fileCleaner.detectClaudeFiles();
+
+    await executeFilePlan(fileCleaner, claudeFiles, isDryRun, logger);
+
+    if (claudeFiles.length > 0 && isDryRun) {
+      logger.info("\nDry-run complete. Use --execute to remove these files.");
+    }
+  } catch (error) {
+    if (error instanceof AppError && error.code === "NOT_GIT_REPO") {
+      logger.error(`Not a Git repository: ${repoPath}`);
+      logger.info(
+        "Please specify a valid Git repository path as the first argument",
+      );
+    } else {
+      throw error;
+    }
+  }
+}
+
+async function handleCommitsOnly(
+  options: CleanOptions,
+  repoPath: string,
+  isDryRun: boolean,
+  logger: ConsoleLogger,
+): Promise<void> {
+  logger.info("Commits-only mode: Cleaning commit messages...");
+
+  const commitCleaner = new CommitCleaner(logger, repoPath);
+
+  await commitCleaner.validateGitRepository();
+
+  // Resolve the target ref once, before any backup, so an invalid --branch
+  // fails fast without creating a backup or touching the checkout.
+  const targetBranch = await commitCleaner.resolveBranch(options.branch);
+
+  await runCommitCleaning(options, logger, commitCleaner, targetBranch, {
+    isDryRun,
+    checkWorkingTree: true,
+  });
+}
+
+async function handleFullCleaning(
+  options: CleanOptions,
+  repoPath: string,
+  isDryRun: boolean,
+  logger: ConsoleLogger,
+): Promise<void> {
+  logger.info(
+    "Full cleaning mode: removing Claude files and cleaning commit messages...",
+  );
+
+  const includeDirs = await loadDirectoryPatterns(
+    options.includeDirs,
+    options.includeDirsFile,
+    logger,
+  );
+
+  const fileCleaner = createFileCleaner(
+    isDryRun,
+    options,
+    repoPath,
+    includeDirs,
+    logger,
+  );
+  const commitCleaner = new CommitCleaner(logger, repoPath);
+
+  // ---- Preflight ---------------------------------------------------------
+  // Validate everything and build both plans *before* either engine creates a
+  // backup or rewrites history. File cleaning runs first and rewrites the
+  // whole history repository-wide, so a predictable commit-phase failure (a
+  // non-existent --branch, a dirty tree, or an infeasible rewrite range) must
+  // be caught here — otherwise it would only surface *after* history has
+  // already been mutated.
+  logger.info(
+    "\n🔎 Preflight: validating repository and planning changes...",
+  );
+
+  try {
+    await fileCleaner.validateRepository();
+  } catch (error) {
+    if (error instanceof AppError && error.code === "NOT_GIT_REPO") {
+      logger.error(`Not a Git repository: ${repoPath}`);
+      logger.info(
+        "Please run this command from within a Git repository or specify a path: claude-cleaner <path>",
+      );
+    }
+    throw error;
+  }
+  await commitCleaner.validateGitRepository();
+
+  // A clean tracked working tree is required before rewriting history. Check
+  // it once, up front, so it gates both the file- and commit-cleaning passes
+  // (execute mode only).
+  if (!isDryRun) {
+    await fileCleaner.validateWorkingTreeClean();
+  }
+
+  // Commit-side feasibility: resolve the target ref exactly once (reused for
+  // backup + cleaning) and confirm the rewrite plan is well-formed.
+  const targetBranch = await commitCleaner.resolveBranch(options.branch);
+  await commitCleaner.planCleaning(targetBranch);
+
+  // File-side plan (repository-wide).
+  const claudeFiles = await fileCleaner.detectClaudeFiles();
+
+  // ---- Execution ---------------------------------------------------------
+  // Step 1: file cleaning (repository-wide, all refs).
+  logger.info("\n📁 Step 1: Removing Claude files...");
+  await executeFilePlan(fileCleaner, claudeFiles, isDryRun, logger, {
+    workingTreeAlreadyValidated: true,
+  });
+  if (claudeFiles.length > 0 && isDryRun) {
+    logger.info("\nFile scan complete. Use --execute to remove these files.");
+  }
+
+  // Step 2: commit cleaning (scoped to the resolved target ref). File cleaning
+  // above may have rewritten commit SHAs, so runCommitCleaning re-analyzes the
+  // current history rather than reusing the preflight plan. The working tree
+  // was already validated in the preflight, so it is not re-checked here.
+  logger.info("\n💬 Step 2: Cleaning commit messages...");
+  await runCommitCleaning(options, logger, commitCleaner, targetBranch, {
+    isDryRun,
+    checkWorkingTree: false,
+  });
+
+  // Summary — emitted only after every step above has completed successfully.
+  if (isDryRun) {
+    logger.info(
+      "\nFull dry-run complete. Use --execute to apply all changes (files + commits).",
+    );
+  } else {
+    logger.info("\nFull cleaning completed successfully!");
   }
 }
 
@@ -305,7 +383,9 @@ async function checkDepsAction(options: { verbose?: boolean | undefined }) {
     const missingCount = results.filter((r) => !r.available).length;
     if (missingCount > 0) {
       logger.error(
-        `\n${missingCount} dependencies are missing. Run with --auto-install to install them.`,
+        `\n${missingCount} required ${
+          missingCount === 1 ? "dependency is" : "dependencies are"
+        } missing. Please install Git and ensure it is available on your PATH.`,
       );
       Deno.exit(1);
     } else {
@@ -326,34 +406,33 @@ async function checkDepsAction(options: { verbose?: boolean | undefined }) {
   }
 }
 
-async function handleCommitCleaning(
+/**
+ * Runs (or, in dry-run, previews) commit-message cleaning for an
+ * already-resolved target ref. `checkWorkingTree` is false when the caller
+ * (full mode) has already validated a clean tracked working tree in its
+ * preflight. Success details are printed only after cleanCommits() resolves,
+ * i.e. after its post-rewrite verification passes.
+ */
+async function runCommitCleaning(
   options: CleanOptions,
   logger: ConsoleLogger,
-  depManager: DependencyManager,
-  repoPath: string,
+  commitCleaner: CommitCleaner,
+  targetBranch: string,
+  ctx: { isDryRun: boolean; checkWorkingTree: boolean },
 ) {
-  const sdPath = await getSdPath(depManager);
-  const commitCleaner = new CommitCleaner(logger, sdPath, repoPath);
-  const isDryRun = !options.execute;
-
-  // Validate Git repository
-  await commitCleaner.validateGitRepository();
-
-  // Resolve the target ref once so backup creation and commit cleaning both
-  // operate on the exact same ref, instead of each independently re-deriving
-  // (and potentially disagreeing on) which branch is being cleaned.
-  const targetBranch = await commitCleaner.resolveBranch(options.branch);
+  const { isDryRun, checkWorkingTree } = ctx;
 
   if (!isDryRun) {
-    // Check working tree is clean before making changes
-    await commitCleaner.checkWorkingTreeClean();
+    if (checkWorkingTree) {
+      await commitCleaner.checkWorkingTreeClean();
+    }
 
-    // Create backup
     const backupBranch = await commitCleaner.createBackup(targetBranch);
     logger.info(`Backup created: ${backupBranch}`);
   }
 
-  // Clean commits
+  // Clean commits (re-analyzes the current history and, in execute mode,
+  // verifies the targeted trailers are gone before resolving).
   const result = await commitCleaner.cleanCommits({
     dryRun: isDryRun,
     verbose: options.verbose,
@@ -410,17 +489,6 @@ async function handleCommitCleaning(
   }
 }
 
-async function getSdPath(depManager: DependencyManager): Promise<string> {
-  const sdCheck = await depManager.checkDependency("sd");
-  if (!sdCheck.available) {
-    throw new AppError(
-      "sd tool is required but not available",
-      "SD_NOT_AVAILABLE",
-    );
-  }
-  return sdCheck.path || "sd";
-}
-
 async function main() {
   // Internal self-invocation used as a `git filter-branch` filter (see
   // src/internal-filter.ts). Intercepted before Cliffy parses arguments so
@@ -447,7 +515,10 @@ async function main() {
         "Execute changes (default: dry-run mode shows what would be changed)",
       )
       .option("-v, --verbose", "Enable verbose output")
-      .option("--auto-install", "Automatically install required dependencies")
+      .option(
+        "--auto-install",
+        "(Deprecated, no-op) Formerly installed external tools; claude-cleaner now requires only Git",
+      )
       .option(
         "--files-only",
         "Only scan and remove Claude files (skip commit message cleaning)",

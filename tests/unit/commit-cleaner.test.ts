@@ -88,20 +88,6 @@ Deno.test("Commit Cleaner - Git Filter-Branch Integration", async (t) => {
   });
 });
 
-Deno.test("Commit Cleaner - SD Tool Integration", async (t) => {
-  await t.step("should use sd for text replacement", async () => {
-    // TODO: Test sd command usage
-  });
-
-  await t.step("should handle sd errors gracefully", async () => {
-    // TODO: Test sd error handling
-  });
-
-  await t.step("should escape special characters for sd", async () => {
-    // TODO: Test special character handling
-  });
-});
-
 Deno.test("Commit Cleaner - Dry Run Mode", async (t) => {
   await t.step("should show commit changes in dry run", async () => {
     const repo = await createRepoWithClaudeCommits();
@@ -171,7 +157,7 @@ Deno.test("Commit Cleaner - Branch Resolution", async (t) => {
   await t.step("resolves to HEAD when no branch is specified", async () => {
     const repo = await createCleanRepo();
     try {
-      const cleaner = new CommitCleaner(logger, "sd", repo.path);
+      const cleaner = new CommitCleaner(logger, repo.path);
       const resolved = await cleaner.resolveBranch(undefined);
       assertEquals(resolved, "HEAD");
     } finally {
@@ -185,7 +171,7 @@ Deno.test("Commit Cleaner - Branch Resolution", async (t) => {
       const { $ } = await import("dax");
       await $`git checkout -b feature`.cwd(repo.path).stdout("piped").stderr("piped");
 
-      const cleaner = new CommitCleaner(logger, "sd", repo.path);
+      const cleaner = new CommitCleaner(logger, repo.path);
       const resolved = await cleaner.resolveBranch("feature");
       assertEquals(resolved, "feature");
     } finally {
@@ -196,7 +182,7 @@ Deno.test("Commit Cleaner - Branch Resolution", async (t) => {
   await t.step("rejects a branch that does not exist, before any mutation", async () => {
     const repo = await createCleanRepo();
     try {
-      const cleaner = new CommitCleaner(logger, "sd", repo.path);
+      const cleaner = new CommitCleaner(logger, repo.path);
       await assertRejects(
         () => cleaner.resolveBranch("does-not-exist"),
         AppError,

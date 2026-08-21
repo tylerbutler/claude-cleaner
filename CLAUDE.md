@@ -60,17 +60,19 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 
 **Dependency Manager (`dependency-manager.ts`)**:
 
-- Auto-installs external tools via mise if `--auto-install` flag is used
-- Manages: Java (for BFG), sd (text processor), BFG Repo-Cleaner JAR
-- Cache directory: `~/.cache/claude-cleaner/`
-- Key methods: `checkAllDependencies()`, `installAllDependencies()`
+- Validates that **Git** is available — the only external runtime dependency
+- History rewriting is performed entirely by Git plus this tool's own
+  self-invoked `git filter-branch` filters (see `internal-filter.ts`); the
+  former Java/BFG/`sd`/mise toolchain has been removed
+- Does not install anything; `--auto-install` is a deprecated no-op
+- Key methods: `checkGit()`, `checkAllDependencies()`
 
 **File Cleaner (`file-cleaner.ts`)**:
 
 - Pattern-based file detection: exact basename matching (safe mode)
 - Standard patterns: `CLAUDE.md`, `.claude/`, `claudedocs/`, `.serena/`, `.vscode/claude.json`
 - Extended patterns: Available via `--include-all-common-patterns` flag
-- Uses BFG Repo-Cleaner for efficient Git history rewriting
+- Uses `git filter-branch` with a self-invoked `--index-filter` for exact-path Git history rewriting
 - Key methods: `detectClaudeFiles()`, `cleanFiles()`, `validateRepository()`
 
 **Commit Cleaner (`commit-cleaner.ts`)**:
@@ -107,9 +109,9 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 
 1. Scan repository for Claude files using pattern matching
 2. Validate Git repository structure
-3. Create backup branch (if `--execute`)
-4. Generate BFG blob-removal script from detected files
-5. Run BFG Repo-Cleaner to remove files from Git history
+3. Create backup (bare clone) if `--execute`
+4. Build a deduplicated, exact-path removal manifest from detected files
+5. Run `git filter-branch -f --index-filter <self-invocation> --tag-name-filter cat -- --all` to remove those exact paths from history
 6. Run `git reflog expire --expire=now --all && git gc --prune=now --aggressive`
 
 ### Commit Cleaning Process
@@ -178,16 +180,17 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 - `dax`: Shell integration for TypeScript
 - `@std/path`, `@std/fs`, `@std/assert`, etc.: Deno standard library
 
-**External Tools** (auto-installed via mise):
+**External Tools**:
 
-- BFG Repo-Cleaner 1.14.0 (Java JAR): Git history cleaning
-- sd: Modern sed replacement for Unicode-safe text processing
-- Java (Temurin 21): Required for BFG Repo-Cleaner
+- **Git**: the only external runtime dependency. History rewriting uses
+  `git filter-branch` driven by this tool's own self-invoked filters, so no
+  Java, BFG, `sd`, or mise runtime is required. (`--auto-install` is a
+  deprecated no-op.)
 
 **Development Tools**:
 
 - Deno 1.x: TypeScript runtime and toolchain
-- mise: Development tool version management
+- mise: Development tool version management (optional, for pinning Deno)
 
 ## TypeScript Configuration
 
@@ -207,7 +210,7 @@ Custom `AppError` class in `utils.ts` with error codes:
 
 - `NOT_GIT_REPO`: Invalid Git repository
 - `INVALID_OPTIONS`: Conflicting CLI options
-- `WORKING_TREE_DIRTY`: Uncommitted changes present
-- `SD_NOT_AVAILABLE`: sd tool not found
-- `BFG_NOT_AVAILABLE`: BFG Repo-Cleaner not found
-- `DEPENDENCY_CHECK_FAILED`: Dependency validation failed
+- `WORKING_TREE_DIRTY`: Uncommitted changes to tracked files present
+- `REPO_PATH_REQUIRED`: No repository path argument provided
+- `GET_BRANCH_FAILED`: Requested `--branch` does not exist
+- `MISSING_DEPENDENCIES`: Required dependency (Git) not found

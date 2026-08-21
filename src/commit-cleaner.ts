@@ -29,7 +29,6 @@ export interface CommitPreview {
 export class CommitCleaner {
   constructor(
     private readonly logger: Logger,
-    private readonly sdPath: string = "sd",
     private readonly repoPath: string = Deno.cwd(),
   ) {}
 
@@ -64,12 +63,18 @@ export class CommitCleaner {
   async cleanCommits(
     options: CommitCleanOptions = {},
   ): Promise<CommitCleanResult> {
-    const branch = await this.resolveBranch(options.branchToClean);
+    // `branchToClean`, when provided, has already been resolved and validated
+    // by the caller (main.ts calls resolveBranch() once, then reuses the
+    // result for backup creation and cleaning). Reusing it here avoids a
+    // redundant `git rev-parse --verify`. Only fall back to resolving HEAD
+    // when no ref was supplied (e.g. a direct, standalone call).
+    const branch = options.branchToClean ?? await this.resolveBranch();
 
     this.logger.info(`Starting commit cleaning for branch: ${branch}`);
 
-    // First, analyze what we would clean
-    const analysis = await this.analyzeCommits(branch);
+    // Analyze what we would clean and confirm the rewrite range is feasible
+    // (earliest offending commit is an ancestor of `branch`) before mutating.
+    const analysis = await this.planCleaning(branch);
 
     if (options.dryRun) {
       this.logger.info("Dry-run mode: showing preview of changes");
@@ -116,9 +121,9 @@ export class CommitCleaner {
       );
     }
 
-    // Fail before any mutation if the earliest offending commit isn't
-    // actually reachable from the ref we're about to rewrite.
-    await this.assertAncestor(earliestCommitWithTrailer, branch);
+    // Ancestor feasibility (earliest offending commit is reachable from the
+    // ref we're about to rewrite) was already asserted by planCleaning()
+    // above, before any mutation.
 
     this.logger.info(
       `Found ${analysis.commitsWithClaudeTrailers} commits with Claude trailers`,
@@ -142,6 +147,34 @@ export class CommitCleaner {
     await this.verifyTrailersRemoved(revisionRange);
 
     this.logger.info("Commit cleaning completed successfully");
+    return analysis;
+  }
+
+  /**
+   * Validates — without mutating anything — that commit cleaning for an
+   * already-resolved `branch` is feasible: it analyzes the reachable history
+   * and, when Claude trailers are present, asserts that the earliest
+   * offending commit is an ancestor of `branch` (so the rewrite range is
+   * well-formed). Full-mode orchestration calls this in its preflight so a
+   * predictable commit-phase failure surfaces *before* the file-cleaning pass
+   * rewrites history. The returned analysis doubles as the dry-run preview and
+   * is reused by {@link cleanCommits}.
+   */
+  async planCleaning(branch: string): Promise<CommitCleanResult> {
+    const analysis = await this.analyzeCommits(branch);
+
+    if (analysis.commitsWithClaudeTrailers > 0) {
+      if (!analysis.earliestCommitWithTrailer) {
+        // commitsWithClaudeTrailers > 0 always records this together in
+        // analyzeCommits(); guarded here only to satisfy the type checker.
+        throw new AppError(
+          "Inconsistent analysis: trailers were found but no earliest commit was recorded",
+          "REVISION_RANGE_INVALID",
+        );
+      }
+      await this.assertAncestor(analysis.earliestCommitWithTrailer, branch);
+    }
+
     return analysis;
   }
 

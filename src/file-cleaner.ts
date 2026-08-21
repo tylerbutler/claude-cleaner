@@ -1001,8 +1001,12 @@ export class FileCleaner {
    * dirty tree ("Cannot rewrite branches: You have unstaged changes."), so
    * this surfaces a clear, actionable error up front. Untracked files are
    * allowed, matching filter-branch's own `require_clean_work_tree` behavior.
+   *
+   * Public so full-mode orchestration can validate the tracked working tree
+   * once in its preflight (before either the file- or commit-cleaning pass
+   * creates a backup) rather than only inside {@link cleanFiles}.
    */
-  private async validateWorkingTreeClean(): Promise<void> {
+  async validateWorkingTreeClean(): Promise<void> {
     const result = await $`git status --porcelain --untracked-files=no`
       .cwd(this.options.repoPath)
       .stdout("piped")
