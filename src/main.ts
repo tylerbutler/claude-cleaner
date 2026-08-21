@@ -151,11 +151,6 @@ async function cleanAction(
         logger,
       );
 
-      // Set BFG path from dependency manager if available
-      if (!isDryRun) {
-        await fileCleaner.setBFGPath(depManager.getBfgJarPath());
-      }
-
       try {
         await fileCleaner.validateRepository();
         const claudeFiles = await fileCleaner.detectClaudeFiles();
@@ -168,6 +163,7 @@ async function cleanAction(
         displayClaudeFiles(claudeFiles, logger);
 
         if (isDryRun) {
+          await fileCleaner.removeFiles(claudeFiles);
           logger.info(
             "\nDry-run complete. Use --execute to remove these files.",
           );
@@ -221,11 +217,6 @@ async function cleanAction(
         logger,
       );
 
-      // Set BFG path from dependency manager if available
-      if (!isDryRun) {
-        await fileCleaner.setBFGPath(depManager.getBfgJarPath());
-      }
-
       try {
         await fileCleaner.validateRepository();
         const claudeFiles = await fileCleaner.detectClaudeFiles();
@@ -236,6 +227,7 @@ async function cleanAction(
           displayClaudeFiles(claudeFiles, logger);
 
           if (isDryRun) {
+            await fileCleaner.removeFiles(claudeFiles);
             logger.info(
               "\nFile scan complete. Use --execute to remove these files.",
             );

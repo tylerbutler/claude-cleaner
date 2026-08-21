@@ -2,12 +2,13 @@
  * Unit tests for file cleaner module
  */
 
-import { assert, assertThrows } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { exists } from "@std/fs";
 import { join } from "@std/path";
 import { createCleanRepo, createRepoWithClaudeFiles } from "../utils/fixtures.ts";
 import { assertValidGitRepo, getRepoFiles } from "../utils/test-helpers.ts";
-import { AppError } from "../../src/utils.ts";
+import { type ClaudeFile, FileCleaner } from "../../src/file-cleaner.ts";
+import { AppError, ConsoleLogger } from "../../src/utils.ts";
 
 // These tests will be implemented when file-cleaner.ts is available
 // For now, they serve as specifications for the expected behavior
@@ -59,24 +60,6 @@ Deno.test("File Cleaner - Claude File Detection", async (t) => {
     } finally {
       await repo.cleanup();
     }
-  });
-});
-
-Deno.test("File Cleaner - BFG Integration", async (t) => {
-  await t.step("should generate correct BFG command", async () => {
-    // TODO: Test BFG command generation
-  });
-
-  await t.step("should handle BFG execution", async () => {
-    // TODO: Test BFG execution wrapper
-  });
-
-  await t.step("should parse BFG output", async () => {
-    // TODO: Test BFG output parsing
-  });
-
-  await t.step("should handle BFG errors", async () => {
-    // TODO: Test BFG error handling
   });
 });
 
@@ -138,249 +121,139 @@ Deno.test("File Cleaner - Dry Run Mode", async (t) => {
   });
 });
 
-Deno.test("File Cleaner - BFG Filename Validation", async (t) => {
-  const { FileCleaner } = await import("../../src/file-cleaner.ts");
-  const { ConsoleLogger } = await import("../../src/utils.ts");
-
-  await t.step("should reject filenames with commas", () => {
-    const logger = new ConsoleLogger(false);
-    const cleaner = new FileCleaner(
+Deno.test("File Cleaner - Removal Plan (exact-path normalization)", async (t) => {
+  const makeCleaner = () =>
+    new FileCleaner(
       {
         dryRun: true,
         verbose: false,
-        repoPath: "/tmp/test",
+        repoPath: ".",
         createBackup: false,
         includeDirectories: [],
         excludeDefaults: false,
         includeAllCommonPatterns: false,
         includeInstructionFiles: false,
       },
-      logger,
+      new ConsoleLogger(false),
     );
 
-    // deno-lint-ignore no-explicit-any
-    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
-
-    try {
-      validateFn(["file,with,comma.txt"]);
-      assert(false, "Should have thrown error for comma in filename");
-    } catch (error) {
-      assert(error instanceof Error);
-      assert(error.message.includes("special character ','"));
-      assert(error.message.includes("file,with,comma.txt"));
-    }
+  const file = (path: string, type: "file" | "directory" = "file"): ClaudeFile => ({
+    path,
+    type,
+    reason: "test",
   });
 
-  await t.step("should reject filenames with opening brace", () => {
-    const logger = new ConsoleLogger(false);
-    const cleaner = new FileCleaner(
-      {
-        dryRun: true,
-        verbose: false,
-        repoPath: "/tmp/test",
-        createBackup: false,
-        includeDirectories: [],
-        excludeDefaults: false,
-        includeAllCommonPatterns: false,
-        includeInstructionFiles: false,
-      },
-      logger,
-    );
-
-    // deno-lint-ignore no-explicit-any
-    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
-
-    try {
-      validateFn(["file{1}.txt"]);
-      assert(false, "Should have thrown error for opening brace in filename");
-    } catch (error) {
-      assert(error instanceof Error);
-      assert(error.message.includes("special character '{'"));
-    }
+  await t.step("drops descendant entries covered by a selected directory", () => {
+    const plan = makeCleaner().buildRemovalPlan([
+      file(".claude", "directory"),
+      file(".claude/config.json"),
+      file(".claude/nested/deep.json"),
+    ]);
+    // Only the covering directory survives; nested descendants are pruned.
+    assertEquals(plan, [".claude"]);
   });
 
-  await t.step("should reject filenames with closing brace", () => {
-    const logger = new ConsoleLogger(false);
-    const cleaner = new FileCleaner(
-      {
-        dryRun: true,
-        verbose: false,
-        repoPath: "/tmp/test",
-        createBackup: false,
-        includeDirectories: [],
-        excludeDefaults: false,
-        includeAllCommonPatterns: false,
-        includeInstructionFiles: false,
-      },
-      logger,
-    );
-
-    // deno-lint-ignore no-explicit-any
-    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
-
-    try {
-      validateFn(["file}1.txt"]);
-      assert(false, "Should have thrown error for closing brace in filename");
-    } catch (error) {
-      assert(error instanceof Error);
-      assert(error.message.includes("special character '}'"));
-    }
+  await t.step("keeps exact paths that share a basename (no basename expansion)", () => {
+    // A Claude artifact and an unrelated file share the basename config.json.
+    // Only the exact Claude path is planned; the sibling is never included.
+    const plan = makeCleaner().buildRemovalPlan([
+      file(".claude/config.json"),
+    ]);
+    assertEquals(plan, [".claude/config.json"]);
+    assert(!plan.includes("src/config.json"));
   });
 
-  await t.step("should accept valid filenames", () => {
-    const logger = new ConsoleLogger(false);
-    const cleaner = new FileCleaner(
-      {
-        dryRun: true,
-        verbose: false,
-        repoPath: "/tmp/test",
-        createBackup: false,
-        includeDirectories: [],
-        excludeDefaults: false,
-        includeAllCommonPatterns: false,
-        includeInstructionFiles: false,
-      },
-      logger,
-    );
-
-    // deno-lint-ignore no-explicit-any
-    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
-
-    // Should not throw for valid filenames
-    validateFn(["CLAUDE.md", ".claude", "file.txt", "my-file_name.log"]);
+  await t.step("keeps distinct same-basename artifacts at different paths", () => {
+    const plan = makeCleaner().buildRemovalPlan([
+      file("docs/CLAUDE.md"),
+      file("CLAUDE.md"),
+    ]);
+    // Both exact paths are preserved (sorted), not collapsed to one basename.
+    assertEquals(plan, ["CLAUDE.md", "docs/CLAUDE.md"]);
   });
 
-  await t.step("should accept filenames with spaces when allowSpaces is true", () => {
-    const logger = new ConsoleLogger(false);
-    const cleaner = new FileCleaner(
-      {
-        dryRun: true,
-        verbose: false,
-        repoPath: "/tmp/test",
-        createBackup: false,
-        includeDirectories: [],
-        excludeDefaults: false,
-        includeAllCommonPatterns: false,
-        includeInstructionFiles: false,
-      },
-      logger,
-    );
-
-    // deno-lint-ignore no-explicit-any
-    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
-
-    // Spaces are allowed when allowSpaces parameter is true (single file mode)
-    validateFn(["my file.txt"], true);
+  await t.step("does not prune sibling paths that merely share a prefix", () => {
+    const plan = makeCleaner().buildRemovalPlan([
+      file(".claude", "directory"),
+      file(".clauderc"),
+    ]);
+    // ".clauderc" is not a descendant of ".claude/" and must be retained.
+    assertEquals(plan, [".claude", ".clauderc"]);
   });
 
-  await t.step("should reject filenames with spaces when allowSpaces is false", () => {
-    const logger = new ConsoleLogger(false);
-    const cleaner = new FileCleaner(
-      {
-        dryRun: true,
-        verbose: false,
-        repoPath: "/tmp/test",
-        createBackup: false,
-        includeDirectories: [],
-        excludeDefaults: false,
-        includeAllCommonPatterns: false,
-        includeInstructionFiles: false,
-      },
-      logger,
-    );
-
-    // deno-lint-ignore no-explicit-any
-    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
-
-    // Spaces are rejected when batching multiple files (allowSpaces defaults to false)
-    assertThrows(
-      () => validateFn(["my file.txt", "another file.log"]),
-      AppError,
-      "special character ' '",
-    );
+  await t.step("deduplicates repeated paths", () => {
+    const plan = makeCleaner().buildRemovalPlan([
+      file("claudedocs", "directory"),
+      file("claudedocs", "directory"),
+      file("claudedocs/notes.md"),
+    ]);
+    assertEquals(plan, ["claudedocs"]);
   });
 
-  await t.step("should reject wildcard characters", () => {
-    const logger = new ConsoleLogger(false);
-    const cleaner = new FileCleaner(
-      {
-        dryRun: true,
-        verbose: false,
-        repoPath: "/tmp/test",
-        createBackup: false,
-        includeDirectories: [],
-        excludeDefaults: false,
-        includeAllCommonPatterns: false,
-        includeInstructionFiles: false,
-      },
-      logger,
-    );
-
-    // deno-lint-ignore no-explicit-any
-    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
-
-    // Wildcard characters should be rejected
-    assertThrows(() => validateFn(["file*.txt"]), AppError, "special character '*'");
-    assertThrows(() => validateFn(["file?.txt"]), AppError, "special character '?'");
+  await t.step("normalizes ./ prefixes and trailing slashes before deduping", () => {
+    const plan = makeCleaner().buildRemovalPlan([
+      file("./.claude/", "directory"),
+      file(".claude"),
+    ]);
+    assertEquals(plan, [".claude"]);
   });
 
-  await t.step("should reject shell metacharacters", () => {
-    const logger = new ConsoleLogger(false);
-    const cleaner = new FileCleaner(
-      {
-        dryRun: true,
-        verbose: false,
-        repoPath: "/tmp/test",
-        createBackup: false,
-        includeDirectories: [],
-        excludeDefaults: false,
-        includeAllCommonPatterns: false,
-        includeInstructionFiles: false,
-      },
-      logger,
-    );
-
-    // deno-lint-ignore no-explicit-any
-    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
-
-    // Shell metacharacters should be rejected
-    assertThrows(() => validateFn(["file;cmd.txt"]), AppError, "special character ';'");
-    assertThrows(() => validateFn(["file|cmd.txt"]), AppError, "special character '|'");
-    assertThrows(() => validateFn(["file&cmd.txt"]), AppError, "special character '&'");
+  await t.step("keeps independent directories and prunes each one's descendants", () => {
+    const plan = makeCleaner().buildRemovalPlan([
+      file(".serena", "directory"),
+      file(".serena/data.json"),
+      file(".claude", "directory"),
+      file(".claude/config.json"),
+    ]);
+    assertEquals(plan, [".claude", ".serena"]);
   });
 
-  await t.step("should provide actionable error messages", () => {
-    const logger = new ConsoleLogger(false);
-    const cleaner = new FileCleaner(
-      {
-        dryRun: true,
-        verbose: false,
-        repoPath: "/tmp/test",
-        createBackup: false,
-        includeDirectories: [],
-        excludeDefaults: false,
-        includeAllCommonPatterns: false,
-        includeInstructionFiles: false,
-      },
-      logger,
-    );
-
-    // deno-lint-ignore no-explicit-any
-    const validateFn = (cleaner as any).validateFilenamesForBFG.bind(cleaner);
-
-    try {
-      validateFn(["bad,file.txt"]);
-      assert(false, "Should have thrown error");
-    } catch (error) {
-      assert(error instanceof Error);
-      assert(
-        error.message.includes("Cannot batch BFG operations"),
-        "Should mention batching limitation",
-      );
-      assert(
-        error.message.includes("Remove this file manually using git commands"),
-        "Should provide actionable guidance",
-      );
-    }
+  await t.step("returns an empty plan for no files", () => {
+    assertEquals(makeCleaner().buildRemovalPlan([]), []);
   });
+});
+
+Deno.test("File Cleaner - Working tree safety", async (t) => {
+  await t.step(
+    "cleanFiles refuses to rewrite history when tracked files are dirty",
+    async () => {
+      const repo = await createRepoWithClaudeFiles();
+      try {
+        // Commit the Claude artifacts so they exist in history.
+        await new Deno.Command("git", { args: ["add", "-A"], cwd: repo.path }).output();
+        await new Deno.Command("git", {
+          args: ["commit", "-m", "add claude artifacts"],
+          cwd: repo.path,
+        }).output();
+
+        // Dirty a tracked file (unstaged change) so filter-branch would refuse.
+        await Deno.writeTextFile(join(repo.path, "README.md"), "# changed\n");
+
+        const cleaner = new FileCleaner(
+          {
+            dryRun: false,
+            verbose: false,
+            repoPath: repo.path,
+            createBackup: false,
+            includeDirectories: [],
+            excludeDefaults: false,
+            includeAllCommonPatterns: false,
+            includeInstructionFiles: false,
+          },
+          new ConsoleLogger(false),
+        );
+
+        let thrown: unknown;
+        try {
+          await cleaner.cleanFiles();
+        } catch (error) {
+          thrown = error;
+        }
+        assert(thrown instanceof AppError, "expected an AppError");
+        assertEquals((thrown as AppError).code, "WORKING_TREE_DIRTY");
+      } finally {
+        await repo.cleanup();
+      }
+    },
+  );
 });

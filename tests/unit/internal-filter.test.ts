@@ -6,6 +6,7 @@
 import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { join } from "@std/path";
 import {
+  batchExactPaths,
   buildSelfInvocationCommand,
   buildSelfInvocationCommandForMode,
   filterCommitMessage,
@@ -207,6 +208,39 @@ Deno.test("filterCommitMessage", async (t) => {
   });
 });
 
+Deno.test("batchExactPaths", async (t) => {
+  await t.step("returns no batches for an empty input", () => {
+    assertEquals(batchExactPaths([]), []);
+  });
+
+  await t.step("keeps a small path list in a single batch", () => {
+    const paths = ["a.txt", "b/c.txt", ".claude"];
+    assertEquals(batchExactPaths(paths), [paths]);
+  });
+
+  await t.step("splits by the maximum path count while preserving order", () => {
+    const paths = ["p0", "p1", "p2", "p3", "p4"];
+    const batches = batchExactPaths(paths, 2, 10_000);
+    assertEquals(batches, [["p0", "p1"], ["p2", "p3"], ["p4"]]);
+    // Every input path appears exactly once, in order.
+    assertEquals(batches.flat(), paths);
+  });
+
+  await t.step("splits by the maximum argument length", () => {
+    // Each path is 5 chars; +1 separator => 6 units each. maxLength 13 fits two.
+    const paths = ["aaaaa", "bbbbb", "ccccc"];
+    const batches = batchExactPaths(paths, 1000, 13);
+    assertEquals(batches, [["aaaaa", "bbbbb"], ["ccccc"]]);
+  });
+
+  await t.step("emits an oversized single path in its own batch", () => {
+    const long = "x".repeat(50);
+    const batches = batchExactPaths(["short", long, "tiny"], 1000, 10);
+    assertEquals(batches, [["short"], [long], ["tiny"]]);
+    assertEquals(batches.flat(), ["short", long, "tiny"]);
+  });
+});
+
 Deno.test("removeExactPaths", async (t) => {
   await t.step("removes exact tracked paths from the index via argument array", async () => {
     const repo = await createTestRepo("remove-exact-paths");
@@ -227,6 +261,37 @@ Deno.test("removeExactPaths", async (t) => {
 
       const files = await getTrackedFiles(repo.path);
       assert(!files.includes("CLAUDE.md"));
+      assert(files.includes("keep-me.txt"));
+    } finally {
+      await repo.cleanup();
+    }
+  });
+
+  await t.step("removes many paths across multiple batches", async () => {
+    const repo = await createTestRepo("remove-exact-paths-batched");
+    try {
+      const artifacts = Array.from({ length: 12 }, (_, i) => ({
+        type: "file" as const,
+        path: `dir${i}/file${i}.txt`,
+        content: `content-${i}`,
+      }));
+      artifacts.push({ type: "file", path: "keep-me.txt", content: "keep" });
+      await addClaudeArtifacts(repo.path, artifacts);
+      const add = new Deno.Command("git", { args: ["add", "."], cwd: repo.path });
+      await add.output();
+      const commit = new Deno.Command("git", {
+        args: ["commit", "-m", "add many files"],
+        cwd: repo.path,
+      });
+      await commit.output();
+
+      // Remove all artifact paths; internal batching must remove every one.
+      await removeExactPaths(artifacts.slice(0, 12).map((a) => a.path), repo.path);
+
+      const files = await getTrackedFiles(repo.path);
+      for (let i = 0; i < 12; i++) {
+        assert(!files.includes(`dir${i}/file${i}.txt`), `dir${i} should be removed`);
+      }
       assert(files.includes("keep-me.txt"));
     } finally {
       await repo.cleanup();

@@ -197,12 +197,64 @@ export function filterCommitMessage(message: string): string {
 }
 
 /**
+ * Upper bound on how many paths are passed to a single `git rm` invocation.
+ * Keeps each batch well below OS argument-count limits.
+ */
+const MAX_PATHS_PER_BATCH = 500;
+
+/**
+ * Upper bound (in UTF-16 code units, matching Windows command-line accounting)
+ * on the combined length of the path arguments in a single `git rm`
+ * invocation. Kept conservative so batches stay under the strictest common
+ * `ARG_MAX` / `CreateProcess` command-line limits across platforms.
+ */
+const MAX_BATCH_ARG_LENGTH = 30_000;
+
+/**
+ * Splits an ordered list of exact paths into bounded batches so that a single
+ * `git rm` invocation never exceeds argument-count or command-length limits.
+ * A single path longer than {@link MAX_BATCH_ARG_LENGTH} is still emitted in a
+ * batch of its own (it cannot be split further). Path order is preserved and
+ * every input path appears in exactly one batch.
+ */
+export function batchExactPaths(
+  paths: readonly string[],
+  maxCount: number = MAX_PATHS_PER_BATCH,
+  maxLength: number = MAX_BATCH_ARG_LENGTH,
+): string[][] {
+  const batches: string[][] = [];
+  let current: string[] = [];
+  let currentLength = 0;
+
+  for (const path of paths) {
+    const pathLength = path.length + 1; // +1 approximates the argument separator
+    const wouldOverflow = current.length >= maxCount ||
+      currentLength + pathLength > maxLength;
+    if (current.length > 0 && wouldOverflow) {
+      batches.push(current);
+      current = [];
+      currentLength = 0;
+    }
+    current.push(path);
+    currentLength += pathLength;
+  }
+
+  if (current.length > 0) {
+    batches.push(current);
+  }
+
+  return batches;
+}
+
+/**
  * Removes the given exact paths from the Git index using `git rm --cached
  * --ignore-unmatch`, passing paths as a real argument array rather than
- * interpolating them into a shell string. This is the seam that Task 2's
- * exact-path rewriting plan will invoke after computing the deduplicated,
- * canonicalized path list (including any batching needed for very large
- * manifests).
+ * interpolating them into a shell string. Paths are removed in bounded
+ * batches (see {@link batchExactPaths}) so that arbitrary special characters
+ * and very large manifests are handled without hitting command-length limits
+ * and without any basename expansion. This is the seam that Task 2's
+ * exact-path rewriting plan invokes after computing the deduplicated,
+ * canonicalized path list.
  */
 export async function removeExactPaths(
   paths: readonly string[],
@@ -212,20 +264,22 @@ export async function removeExactPaths(
     return;
   }
 
-  const command = new Deno.Command("git", {
-    args: ["rm", "--cached", "-r", "--ignore-unmatch", "--", ...paths],
-    cwd: repoPath,
-    stdout: "piped",
-    stderr: "piped",
-  });
+  for (const batch of batchExactPaths(paths)) {
+    const command = new Deno.Command("git", {
+      args: ["rm", "--cached", "-r", "--ignore-unmatch", "--", ...batch],
+      cwd: repoPath,
+      stdout: "piped",
+      stderr: "piped",
+    });
 
-  const { success, stderr } = await command.output();
-  if (!success) {
-    throw new AppError(
-      "git rm --cached failed while applying the exact-path manifest",
-      "INTERNAL_FILTER_INDEX_RM_FAILED",
-      new Error(new TextDecoder().decode(stderr)),
-    );
+    const { success, stderr } = await command.output();
+    if (!success) {
+      throw new AppError(
+        "git rm --cached failed while applying the exact-path manifest",
+        "INTERNAL_FILTER_INDEX_RM_FAILED",
+        new Error(new TextDecoder().decode(stderr)),
+      );
+    }
   }
 }
 
