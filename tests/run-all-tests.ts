@@ -115,6 +115,12 @@ const TEST_SUITES: TestSuite[] = [
     description: "Internal self-invocation filter CLI integration tests",
   },
   {
+    name: "compiled-binary-smoke",
+    path: "tests/integration/compiled-binary-smoke.test.ts",
+    description:
+      "Compiled Linux binary commit-cleaning smoke test (skipped unless CLAUDE_CLEANER_BINARY is set)",
+  },
+  {
     name: "dependency-management",
     path: "tests/integration/dependency-management.test.ts",
     description: "Dependency reporting and --auto-install no-op tests",

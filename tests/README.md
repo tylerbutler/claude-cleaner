@@ -83,6 +83,11 @@ Integration tests verify complete workflows and cross-module interactions:
 - **cross-platform.test.ts**: Platform-specific behavior and compatibility
 - **pattern-matching.test.ts**: Tests directory pattern matching in real repositories
 - **cli-options.test.ts**: Tests CLI flag parsing for pattern options
+- **compiled-binary-smoke.test.ts**: Runs `--commits-only --execute` against a
+  compiled Linux binary (set `CLAUDE_CLEANER_BINARY` to its path; otherwise
+  skipped). Verifies the exact cleaned commit message, backup-branch
+  behavior, and that the self-invoked `git filter-branch` filter never
+  shells out to `deno`
 
 ## Test Utilities
 
