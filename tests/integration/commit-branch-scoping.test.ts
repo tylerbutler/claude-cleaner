@@ -274,3 +274,87 @@ Deno.test("Integration - Branch-scoped commit rewriting", async (t) => {
     },
   );
 });
+
+/**
+ * Converted from a formerly in-process check in
+ * `tests/unit/commit-cleaner.test.ts` ("Commit Cleaner - Un-checked-out
+ * branch targeting") that called `CommitCleaner.cleanCommits({ dryRun: false,
+ * ... })` directly from the test process. That seam is unsound:
+ * `resolveSelfInvocation` (src/internal-filter.ts) derives the `git
+ * filter-branch --msg-filter` self-invocation command from
+ * `Deno.mainModule`, which under `deno test` resolves to the *test file*
+ * itself rather than `src/main.ts`. The spawned filter subprocess therefore
+ * never ran the real attribution parser, and the assertion
+ * `!hasClaudeArtifacts(featureMessage)` passed even for empty/garbage output
+ * — for the wrong reason.
+ *
+ * This test exercises the same scenario through the real CLI subprocess seam
+ * (`deno run --allow-all src/main.ts ...`, the same entry point production
+ * and compiled binaries use) and asserts the *exact* cleaned commit message
+ * via `assertEquals` rather than a substring/"no artifacts" check, so a
+ * regression that causes the msg-filter to emit empty (or otherwise wrong)
+ * output fails loudly instead of silently passing.
+ */
+Deno.test("Integration - Un-checked-out branch targeting (subprocess CLI seam)", async (t) => {
+  await t.step(
+    "cleanCommits rewrites only the requested feature branch, never switches the checkout, " +
+      "and produces the exact cleaned message when feature is not checked out",
+    async () => {
+      const repo = await makeRepo();
+      try {
+        await writeFile(repo.path, "main.txt", "main content\n");
+        await git(repo.path, ["add", "-A"]);
+        await git(repo.path, ["commit", "-m", "main commit, clean history"]);
+
+        const initialBranch = (await git(repo.path, ["symbolic-ref", "--short", "HEAD"])).trim();
+        const initialShaBefore = (await git(repo.path, ["rev-parse", "HEAD"])).trim();
+
+        await git(repo.path, ["checkout", "-b", "feature"]);
+        const trailerMessage = "feature work\n\n" +
+          "🤖 Generated with [Claude Code](https://claude.ai/code)\n\n" +
+          "Co-Authored-By: Claude <noreply@anthropic.com>";
+        await git(repo.path, ["commit", "--allow-empty", "-m", trailerMessage]);
+
+        // Return to the branch that was checked out before feature existed;
+        // feature is deliberately left un-checked-out from here on.
+        await git(repo.path, ["checkout", initialBranch]);
+
+        const result = await runCli([
+          "--commits-only",
+          "--execute",
+          "--branch",
+          "feature",
+          repo.path,
+        ]);
+        assert(result.success, `CLI failed: ${result.stderr}\n${result.stdout}`);
+        assert(
+          result.stdout.includes("Cleaned 1 commits"),
+          `expected exactly one commit to be cleaned, got: ${result.stdout}`,
+        );
+
+        const checkedOutAfter = (await git(repo.path, ["symbolic-ref", "--short", "HEAD"])).trim();
+        assertEquals(checkedOutAfter, initialBranch, "checkout must not change");
+
+        const initialShaAfter = (await git(repo.path, ["rev-parse", initialBranch])).trim();
+        assertEquals(
+          initialShaAfter,
+          initialShaBefore,
+          "the checked-out branch must be untouched",
+        );
+
+        // Exact equality — not `hasClaudeArtifacts`/substring — so a
+        // self-invocation regression that emits empty (or otherwise wrong)
+        // output fails this assertion instead of passing for the wrong
+        // reason.
+        const featureMessage = await git(repo.path, ["log", "-1", "--format=%B", "feature"]);
+        assertEquals(
+          featureMessage,
+          "feature work\n\n",
+          "the real msg-filter must remove exactly the trailer lines and nothing else",
+        );
+      } finally {
+        await repo.cleanup();
+      }
+    },
+  );
+});

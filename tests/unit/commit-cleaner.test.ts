@@ -207,62 +207,15 @@ Deno.test("Commit Cleaner - Branch Resolution", async (t) => {
   });
 });
 
-Deno.test("Commit Cleaner - Un-checked-out branch targeting", async (t) => {
-  await t.step(
-    "cleanCommits rewrites only the requested feature branch and never touches the checked-out branch",
-    async () => {
-      const repo = await createCleanRepo();
-      try {
-        const { $ } = await import("dax");
-        const logger = new ConsoleLogger(false);
-
-        const initialBranch = (
-          await $`git symbolic-ref --short HEAD`.cwd(repo.path).stdout("piped").stderr("piped")
-        ).stdout.trim();
-        const mainShaBefore = (
-          await $`git rev-parse HEAD`.cwd(repo.path).stdout("piped").stderr("piped")
-        ).stdout.trim();
-
-        await $`git checkout -b feature`.cwd(repo.path).stdout("piped").stderr("piped");
-        const trailerMessage = "feature work\n\n" +
-          "🤖 Generated with [Claude Code](https://claude.ai/code)\n\n" +
-          "Co-Authored-By: Claude <noreply@anthropic.com>";
-        await $`git commit --allow-empty -m ${trailerMessage}`
-          .cwd(repo.path)
-          .stdout("piped")
-          .stderr("piped");
-
-        // Return to the branch that was checked out before feature existed;
-        // it is deliberately left un-checked-out from here on.
-        await $`git checkout ${initialBranch}`.cwd(repo.path).stdout("piped").stderr("piped");
-
-        const cleaner = new CommitCleaner(logger, "sd", repo.path);
-        const targetBranch = await cleaner.resolveBranch("feature");
-        await cleaner.createBackup(targetBranch);
-
-        const result = await cleaner.cleanCommits({
-          dryRun: false,
-          branchToClean: targetBranch,
-        });
-        assertEquals(result.commitsWithClaudeTrailers, 1);
-
-        const checkedOutAfter = (
-          await $`git symbolic-ref --short HEAD`.cwd(repo.path).stdout("piped").stderr("piped")
-        ).stdout.trim();
-        assertEquals(checkedOutAfter, initialBranch, "checkout must not change");
-
-        const mainShaAfter = (
-          await $`git rev-parse ${initialBranch}`.cwd(repo.path).stdout("piped").stderr("piped")
-        ).stdout.trim();
-        assertEquals(mainShaAfter, mainShaBefore, "the checked-out branch must be untouched");
-
-        const featureMessage = (
-          await $`git log -1 --format=%B feature`.cwd(repo.path).stdout("piped").stderr("piped")
-        ).stdout;
-        assert(!hasClaudeArtifacts(featureMessage), "feature trailers must be removed");
-      } finally {
-        await repo.cleanup();
-      }
-    },
-  );
-});
+// NOTE: The "un-checked-out branch targeting" behavior check formerly lived
+// here and called `cleaner.cleanCommits({ dryRun: false, ... })` in-process.
+// That is unsound: `resolveSelfInvocation` derives the `--msg-filter`
+// self-invocation command from `Deno.mainModule`, which under `deno test`
+// resolves to *this test file*, not `src/main.ts`. The `git filter-branch
+// --msg-filter` subprocess therefore never runs the real filter, and its
+// (effectively empty/no-op) output made `hasClaudeArtifacts(...)` pass for
+// the wrong reason. The check now runs through the real CLI subprocess seam
+// (the same seam `src/main.ts` and compiled binaries use) so it exercises
+// production code and asserts the exact cleaned message; see
+// "Un-checked-out branch targeting (subprocess CLI seam)" in
+// tests/integration/commit-branch-scoping.test.ts.
