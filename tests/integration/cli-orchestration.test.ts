@@ -72,7 +72,7 @@ async function makeRepo(): Promise<
   const parent = await Deno.makeTempDir({ prefix: "claude-cleaner-orch-" });
   const repoPath = join(parent, "repo");
   await Deno.mkdir(repoPath);
-  await git(repoPath, ["init"]);
+  await git(repoPath, ["init", "-b", "main"]);
   await git(repoPath, ["config", "user.email", "test@example.com"]);
   await git(repoPath, ["config", "user.name", "Test User"]);
 

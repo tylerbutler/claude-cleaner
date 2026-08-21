@@ -36,7 +36,7 @@ export async function createIsolatedRepo(name: string): Promise<IsolatedRepo> {
   });
   const repoPath = join(parent, "repo");
   await ensureDir(repoPath);
-  await gitCmd(repoPath, ["init"]);
+  await gitCmd(repoPath, ["init", "-b", "main"]);
   await gitCmd(repoPath, ["config", "user.email", "test@example.com"]);
   await gitCmd(repoPath, ["config", "user.name", "Test User"]);
   // Neutralize any developer/CI global gitignore (e.g. one ignoring *.log or
@@ -166,7 +166,7 @@ export async function createTestRepo(name: string): Promise<TestRepo> {
   });
 
   // Initialize Git repository
-  await $`git init`.cwd(tempDir);
+  await $`git init -b main`.cwd(tempDir);
   await $`git config user.email "test@example.com"`.cwd(tempDir);
   await $`git config user.name "Test User"`.cwd(tempDir);
 

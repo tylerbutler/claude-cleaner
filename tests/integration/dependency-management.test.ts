@@ -45,7 +45,7 @@ async function makeRepo(): Promise<{ path: string; cleanup: () => Promise<void> 
       throw new Error(`git ${args.join(" ")}: ${new TextDecoder().decode(r.stderr)}`);
     }
   };
-  await git(["init"]);
+  await git(["init", "-b", "main"]);
   await git(["config", "user.email", "test@example.com"]);
   await git(["config", "user.name", "Test User"]);
   await Deno.writeTextFile(join(repoPath, "README.md"), "# Test\n");

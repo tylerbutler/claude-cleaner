@@ -59,7 +59,7 @@ async function makeRepo(): Promise<{ path: string; cleanup: () => Promise<void> 
   const parent = await Deno.makeTempDir({ prefix: "claude-cleaner-msg-filter-" });
   const repoPath = join(parent, "repo");
   await ensureDir(repoPath);
-  await git(repoPath, ["init"]);
+  await git(repoPath, ["init", "-b", "main"]);
   await git(repoPath, ["config", "user.email", "test@example.com"]);
   await git(repoPath, ["config", "user.name", "Test User"]);
   return {
