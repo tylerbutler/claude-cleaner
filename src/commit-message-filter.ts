@@ -138,6 +138,17 @@ export function filterClaudeAttribution(message: string): CommitMessageFilterRes
     }
   }
 
+  // A parser that removes nothing must not mutate the message. Returning the
+  // original message verbatim preserves intentional formatting in
+  // already-clean messages — e.g. multiple consecutive blank-line runs the
+  // normalization pass below would otherwise collapse — and keeps the
+  // `--msg-filter` path a true no-op for commits that carry no Claude
+  // attribution. Spacing normalization only ever applies to messages a
+  // removal actually changed.
+  if (removedLines.length === 0) {
+    return { cleanedMessage: message, removedLines };
+  }
+
   // Normalize spacing deterministically without inserting any separators:
   // drop trailing blank lines, then collapse runs of 2+ blank lines (which a
   // removal can leave behind) into a single blank line. This never merges the

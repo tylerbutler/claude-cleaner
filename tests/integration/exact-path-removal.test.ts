@@ -177,4 +177,35 @@ Deno.test("Integration - Exact-path history rewriting", async (t) => {
       }
     },
   );
+
+  await t.step(
+    "dry-run ref list reflects the full `--all` scope (remote-tracking and tag refs), not just branches",
+    async () => {
+      const repo = await makeRepo();
+      try {
+        await writeFile(repo.path, ".claude/config.json", "claude");
+        await git(repo.path, ["add", "-A"]);
+        await git(repo.path, ["commit", "-m", "files"]);
+        // A tag and a remote-tracking ref both fall under `git ... -- --all`,
+        // which is what an execute run rewrites; the dry-run scope must not
+        // understate them by listing only local branches.
+        await git(repo.path, ["tag", "v1"]);
+        await git(repo.path, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
+
+        const result = await runCli(["--files-only", repo.path]);
+        assert(result.success, `CLI failed: ${result.stderr}`);
+
+        assert(
+          result.stdout.includes("refs/tags/v1"),
+          `dry-run should list the tag ref, got: ${result.stdout}`,
+        );
+        assert(
+          result.stdout.includes("refs/remotes/origin/main"),
+          `dry-run should list the remote-tracking ref that --all rewrites, got: ${result.stdout}`,
+        );
+      } finally {
+        await repo.cleanup();
+      }
+    },
+  );
 });

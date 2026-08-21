@@ -210,26 +210,3 @@ Deno.test("Cross-platform - Git Operations", async (t) => {
     }
   });
 });
-
-Deno.test("Cross-platform - Error Handling", async (t) => {
-  await t.step(
-    "should provide platform-appropriate error messages",
-    async () => {
-      // TODO: Test error message formatting for different platforms
-    },
-  );
-
-  await t.step(
-    "should handle platform-specific permission errors",
-    async () => {
-      // TODO: Test permission error handling on different platforms
-    },
-  );
-
-  await t.step("should handle platform-specific path limitations", () => {
-    if (currentOS === "windows") {
-      // Test Windows path length limitations
-      // TODO: Test very long paths on Windows
-    }
-  });
-});

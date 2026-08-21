@@ -357,14 +357,22 @@ export class FileCleaner {
     this.logger.verbose("Scanning Git history for files to remove...");
 
     try {
-      // Get all files that have ever existed in Git history
-      const result = await $`git log --all --pretty=format: --name-only --diff-filter=A`
+      // Get all files that have ever existed in Git history. `-z` emits paths
+      // literally as NUL-separated records instead of Git's default C-style
+      // quoting: without it, a non-ASCII or control-character path such as
+      // `.claude/café.json` is printed as the quoted, octal-escaped token
+      // `".claude/caf\303\251.json"`, which neither matches the Claude
+      // detection patterns nor, once planned, matches the real path when
+      // `git rm` runs — silently leaving the artifact in history. NUL
+      // separation also round-trips paths that themselves contain newlines,
+      // so entries are used verbatim (no trimming that could corrupt a path
+      // with leading/trailing spaces).
+      const result = await $`git log --all -z --pretty=format: --name-only --diff-filter=A`
         .cwd(repoPath)
         .quiet();
 
       const historicalFiles = result.stdout
-        .split("\n")
-        .map((line) => line.trim())
+        .split("\0")
         .filter((line) => line.length > 0);
 
       // Remove duplicates
@@ -815,12 +823,16 @@ export class FileCleaner {
 
   /**
    * Lists the refs that a repository-wide `git filter-branch -- --all` rewrite
-   * would touch (local branches and tags). Used only to surface the rewrite
-   * scope in dry-run output; the actual rewrite always uses `-- --all`.
+   * would touch. `--all` covers every ref under `refs/` (local branches, tags,
+   * remote-tracking refs, notes, …), so this enumerates all of them rather
+   * than just `refs/heads`/`refs/tags` — otherwise the dry-run scope display
+   * would understate what an execute run actually rewrites. Used only to
+   * surface the rewrite scope in dry-run output; the actual rewrite always
+   * uses `-- --all`.
    */
   private async getRefsToRewrite(): Promise<string[]> {
     try {
-      const result = await $`git for-each-ref --format=${"%(refname)"} refs/heads refs/tags`
+      const result = await $`git for-each-ref --format=${"%(refname)"}`
         .cwd(this.options.repoPath)
         .stdout("piped")
         .quiet();

@@ -12,25 +12,11 @@ interface TestSuite {
 }
 
 const TEST_SUITES: TestSuite[] = [
+  // Unit suites (tests/unit/) — module-level behavior, no full CLI workflow.
   {
     name: "test-framework",
     path: "tests/unit/test-framework.test.ts",
-    description: "Testing framework validation",
-  },
-  {
-    name: "dependency-manager",
-    path: "tests/unit/dependency-manager.test.ts",
-    description: "Dependency manager unit tests",
-  },
-  {
-    name: "file-cleaner",
-    path: "tests/unit/file-cleaner.test.ts",
-    description: "File cleaner unit tests",
-  },
-  {
-    name: "commit-cleaner",
-    path: "tests/unit/commit-cleaner.test.ts",
-    description: "Commit cleaner unit tests",
+    description: "Testing framework and fixtures validation",
   },
   {
     name: "utils",
@@ -38,19 +24,110 @@ const TEST_SUITES: TestSuite[] = [
     description: "Utilities unit tests",
   },
   {
+    name: "dependency-manager",
+    path: "tests/unit/dependency-manager.test.ts",
+    description: "Dependency manager (Git-only) unit tests",
+  },
+  {
+    name: "file-cleaner",
+    path: "tests/unit/file-cleaner.test.ts",
+    description: "File cleaner detection/planning unit tests",
+  },
+  {
+    name: "commit-cleaner",
+    path: "tests/unit/commit-cleaner.test.ts",
+    description: "Commit cleaner analysis/branch-resolution unit tests",
+  },
+  {
+    name: "commit-message-filter",
+    path: "tests/unit/commit-message-filter.test.ts",
+    description: "Shared commit-message attribution parser unit tests",
+  },
+  {
+    name: "internal-filter",
+    path: "tests/unit/internal-filter.test.ts",
+    description: "Internal self-invocation filter unit tests",
+  },
+  {
     name: "main",
     path: "tests/unit/main.test.ts",
-    description: "Main CLI unit tests",
+    description: "Main CLI validation and mode-dispatch tests",
   },
+  {
+    name: "pattern-matcher",
+    path: "tests/unit/pattern-matcher.test.ts",
+    description: "Hybrid glob/regex pattern matcher unit tests",
+  },
+  {
+    name: "pattern-validation",
+    path: "tests/unit/pattern-validation.test.ts",
+    description: "Pattern validation unit tests",
+  },
+  {
+    name: "all-common-patterns",
+    path: "tests/unit/all-common-patterns.test.ts",
+    description: "Extended (--include-all-common-patterns) pattern tests",
+  },
+  {
+    name: "no-defaults-behavior",
+    path: "tests/unit/no-defaults-behavior.test.ts",
+    description: "--no-defaults behavior unit tests",
+  },
+  {
+    name: "file-pattern-loading",
+    path: "tests/unit/file-pattern-loading.test.ts",
+    description: "Directory-pattern file loading unit tests",
+  },
+  // Integration suites (tests/integration/) — real CLI / git workflows.
   {
     name: "full-workflow",
     path: "tests/integration/full-workflow.test.ts",
-    description: "Full workflow integration tests",
+    description: "Full workflow: dry-run plans, backups/recovery, no leaks",
+  },
+  {
+    name: "cli-orchestration",
+    path: "tests/integration/cli-orchestration.test.ts",
+    description: "Full-mode preflight, relative paths, and mode coordination",
+  },
+  {
+    name: "cli-options",
+    path: "tests/integration/cli-options.test.ts",
+    description: "CLI option parsing and directory-pattern integration",
+  },
+  {
+    name: "exact-path-removal",
+    path: "tests/integration/exact-path-removal.test.ts",
+    description: "Exact-path history rewriting integration tests",
+  },
+  {
+    name: "commit-branch-scoping",
+    path: "tests/integration/commit-branch-scoping.test.ts",
+    description: "Branch-scoped commit rewriting integration tests",
+  },
+  {
+    name: "commit-message-filtering",
+    path: "tests/integration/commit-message-filtering.test.ts",
+    description: "Commit-message filtering via real filter-branch",
+  },
+  {
+    name: "internal-filter-invocation",
+    path: "tests/integration/internal-filter-invocation.test.ts",
+    description: "Internal self-invocation filter CLI integration tests",
   },
   {
     name: "dependency-management",
     path: "tests/integration/dependency-management.test.ts",
-    description: "Dependency management integration tests",
+    description: "Dependency reporting and --auto-install no-op tests",
+  },
+  {
+    name: "pattern-matching",
+    path: "tests/integration/pattern-matching.test.ts",
+    description: "Pattern-matching detection integration tests",
+  },
+  {
+    name: "all-common-patterns-cli",
+    path: "tests/integration/all-common-patterns-cli.test.ts",
+    description: "Extended-pattern CLI integration tests",
   },
   {
     name: "cross-platform",

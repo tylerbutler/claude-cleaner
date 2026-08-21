@@ -180,6 +180,19 @@ Deno.test("filterClaudeAttribution - Unicode and spacing", async (t) => {
     assertEquals(result.cleanedMessage, message);
   });
 
+  await t.step(
+    "does not collapse intentional multiple blank-line runs when nothing is removed",
+    () => {
+      // A parser that removes nothing must not mutate the message: an
+      // already-clean message that intentionally uses consecutive blank lines
+      // (and trailing blank lines) is returned byte-for-byte.
+      const message = "Subject line\n\n\nBody after two blank lines\n\n\nMore body\n\n";
+      const result = filterClaudeAttribution(message);
+      assertEquals(result.removedLines, []);
+      assertEquals(result.cleanedMessage, message);
+    },
+  );
+
   await t.step("is idempotent: filtering the cleaned output changes nothing", () => {
     const message = "Add feature\n\nBody.\n\n" +
       "🤖 Generated with [Claude Code](https://claude.ai/code)\n\n" +
