@@ -2,7 +2,9 @@
  * Unit tests for commit cleaner module
  */
 
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
+import { CommitCleaner } from "../../src/commit-cleaner.ts";
+import { AppError, ConsoleLogger } from "../../src/utils.ts";
 import { createCleanRepo, createRepoWithClaudeCommits } from "../utils/fixtures.ts";
 import { getCommitMessages, hasClaudeArtifacts } from "../utils/test-helpers.ts";
 
@@ -161,4 +163,106 @@ Deno.test("Commit Cleaner - Edge Cases", async (t) => {
   await t.step("should handle merge commits", async () => {
     // TODO: Test merge commit handling
   });
+});
+
+Deno.test("Commit Cleaner - Branch Resolution", async (t) => {
+  const logger = new ConsoleLogger(false);
+
+  await t.step("resolves to HEAD when no branch is specified", async () => {
+    const repo = await createCleanRepo();
+    try {
+      const cleaner = new CommitCleaner(logger, "sd", repo.path);
+      const resolved = await cleaner.resolveBranch(undefined);
+      assertEquals(resolved, "HEAD");
+    } finally {
+      await repo.cleanup();
+    }
+  });
+
+  await t.step("resolves an explicit, existing branch name as-is", async () => {
+    const repo = await createCleanRepo();
+    try {
+      const { $ } = await import("dax");
+      await $`git checkout -b feature`.cwd(repo.path).stdout("piped").stderr("piped");
+
+      const cleaner = new CommitCleaner(logger, "sd", repo.path);
+      const resolved = await cleaner.resolveBranch("feature");
+      assertEquals(resolved, "feature");
+    } finally {
+      await repo.cleanup();
+    }
+  });
+
+  await t.step("rejects a branch that does not exist, before any mutation", async () => {
+    const repo = await createCleanRepo();
+    try {
+      const cleaner = new CommitCleaner(logger, "sd", repo.path);
+      await assertRejects(
+        () => cleaner.resolveBranch("does-not-exist"),
+        AppError,
+      );
+    } finally {
+      await repo.cleanup();
+    }
+  });
+});
+
+Deno.test("Commit Cleaner - Un-checked-out branch targeting", async (t) => {
+  await t.step(
+    "cleanCommits rewrites only the requested feature branch and never touches the checked-out branch",
+    async () => {
+      const repo = await createCleanRepo();
+      try {
+        const { $ } = await import("dax");
+        const logger = new ConsoleLogger(false);
+
+        const initialBranch = (
+          await $`git symbolic-ref --short HEAD`.cwd(repo.path).stdout("piped").stderr("piped")
+        ).stdout.trim();
+        const mainShaBefore = (
+          await $`git rev-parse HEAD`.cwd(repo.path).stdout("piped").stderr("piped")
+        ).stdout.trim();
+
+        await $`git checkout -b feature`.cwd(repo.path).stdout("piped").stderr("piped");
+        const trailerMessage = "feature work\n\n" +
+          "🤖 Generated with [Claude Code](https://claude.ai/code)\n\n" +
+          "Co-Authored-By: Claude <noreply@anthropic.com>";
+        await $`git commit --allow-empty -m ${trailerMessage}`
+          .cwd(repo.path)
+          .stdout("piped")
+          .stderr("piped");
+
+        // Return to the branch that was checked out before feature existed;
+        // it is deliberately left un-checked-out from here on.
+        await $`git checkout ${initialBranch}`.cwd(repo.path).stdout("piped").stderr("piped");
+
+        const cleaner = new CommitCleaner(logger, "sd", repo.path);
+        const targetBranch = await cleaner.resolveBranch("feature");
+        await cleaner.createBackup(targetBranch);
+
+        const result = await cleaner.cleanCommits({
+          dryRun: false,
+          branchToClean: targetBranch,
+        });
+        assertEquals(result.commitsWithClaudeTrailers, 1);
+
+        const checkedOutAfter = (
+          await $`git symbolic-ref --short HEAD`.cwd(repo.path).stdout("piped").stderr("piped")
+        ).stdout.trim();
+        assertEquals(checkedOutAfter, initialBranch, "checkout must not change");
+
+        const mainShaAfter = (
+          await $`git rev-parse ${initialBranch}`.cwd(repo.path).stdout("piped").stderr("piped")
+        ).stdout.trim();
+        assertEquals(mainShaAfter, mainShaBefore, "the checked-out branch must be untouched");
+
+        const featureMessage = (
+          await $`git log -1 --format=%B feature`.cwd(repo.path).stdout("piped").stderr("piped")
+        ).stdout;
+        assert(!hasClaudeArtifacts(featureMessage), "feature trailers must be removed");
+      } finally {
+        await repo.cleanup();
+      }
+    },
+  );
 });

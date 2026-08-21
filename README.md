@@ -322,7 +322,7 @@ When cleaning commit messages with git filter-branch:
 
 - **Strategy**: Creates a **branch** in the same repository
 - **Naming format**: `backup/pre-claude-clean-YYYY-MM-DDTHH-MM-SS-sssZ`
-- **Protection**: filter-branch only rewrites the specified revision range (current branch), leaving the backup branch pointing to original commits
+- **Protection**: filter-branch only rewrites the resolved `--branch` target (HEAD by default), leaving the backup branch pointing to the original commits. Your checked-out branch is never switched, even when `--branch` targets a different, un-checked-out branch.
 - **Recovery**: `git checkout backup/...` to restore previous state
 
 **Why different strategies?** BFG operates on entire repositories and updates all refs, so it needs physical separation. Git filter-branch allows selective rewriting by revision range, so a branch backup is sufficient and more convenient.

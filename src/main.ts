@@ -339,12 +339,17 @@ async function handleCommitCleaning(
   // Validate Git repository
   await commitCleaner.validateGitRepository();
 
+  // Resolve the target ref once so backup creation and commit cleaning both
+  // operate on the exact same ref, instead of each independently re-deriving
+  // (and potentially disagreeing on) which branch is being cleaned.
+  const targetBranch = await commitCleaner.resolveBranch(options.branch);
+
   if (!isDryRun) {
     // Check working tree is clean before making changes
     await commitCleaner.checkWorkingTreeClean();
 
     // Create backup
-    const backupBranch = await commitCleaner.createBackup(options.branch);
+    const backupBranch = await commitCleaner.createBackup(targetBranch);
     logger.info(`Backup created: ${backupBranch}`);
   }
 
@@ -352,7 +357,7 @@ async function handleCommitCleaning(
   const result = await commitCleaner.cleanCommits({
     dryRun: isDryRun,
     verbose: options.verbose,
-    branchToClean: options.branch,
+    branchToClean: targetBranch,
   });
 
   // Display results

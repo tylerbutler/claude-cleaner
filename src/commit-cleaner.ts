@@ -60,10 +60,38 @@ export class CommitCleaner {
     private readonly repoPath: string = Deno.cwd(),
   ) {}
 
+  /**
+   * Resolves and validates the ref the caller wants cleaned, defaulting to
+   * HEAD. This is the single source of truth for "which ref are we
+   * operating on" for a given invocation — callers (including main.ts, for
+   * backup creation) must reuse the exact string this returns rather than
+   * independently re-deriving the currently checked-out branch, which is
+   * what previously caused execution to silently target HEAD instead of an
+   * explicitly requested, un-checked-out branch.
+   */
+  async resolveBranch(branchToClean?: string): Promise<string> {
+    const requested = branchToClean?.trim() || "HEAD";
+    const target = `${requested}^{commit}`;
+    const result = await $`git rev-parse --verify --quiet ${target}`
+      .cwd(this.repoPath)
+      .stdout("piped")
+      .stderr("piped")
+      .noThrow();
+
+    if (result.code !== 0) {
+      throw new AppError(
+        `Branch or revision "${requested}" does not exist in this repository`,
+        "GET_BRANCH_FAILED",
+      );
+    }
+
+    return requested;
+  }
+
   async cleanCommits(
     options: CommitCleanOptions = {},
   ): Promise<CommitCleanResult> {
-    const branch = options.branchToClean || "HEAD";
+    const branch = await this.resolveBranch(options.branchToClean);
 
     this.logger.info(`Starting commit cleaning for branch: ${branch}`);
 
@@ -80,35 +108,14 @@ export class CommitCleaner {
       ) {
         this.logger.info("\n[DRY RUN] Commands that would be executed:");
 
-        // Get current branch
-        try {
-          const currentBranchResult = await $`git rev-parse --abbrev-ref HEAD`
-            .cwd(this.repoPath)
-            .stdout("piped")
-            .quiet();
-          const currentBranch = currentBranchResult.stdout.trim();
+        const { revisionRange } = await this.buildRevisionRange(
+          branch,
+          analysis.earliestCommitWithTrailer,
+        );
 
-          // Try to get parent commit
-          const parentResult = await $`git rev-parse ${analysis.earliestCommitWithTrailer}^`
-            .cwd(this.repoPath)
-            .stdout("piped")
-            .noThrow()
-            .quiet();
-          let revisionRange = currentBranch;
-
-          if (parentResult.code === 0) {
-            const parentSha = parentResult.stdout.trim();
-            revisionRange = `${formatGitRef(parentSha)}..${currentBranch}`;
-          }
-
-          this.logger.info(
-            `  git filter-branch -f --msg-filter <clean-script> ${revisionRange}`,
-          );
-        } catch {
-          this.logger.info(
-            `  git filter-branch -f --msg-filter <clean-script> HEAD`,
-          );
-        }
+        this.logger.info(
+          `  git filter-branch -f --msg-filter <clean-script> ${revisionRange}`,
+        );
       }
 
       return {
@@ -125,12 +132,40 @@ export class CommitCleaner {
       return analysis;
     }
 
+    const earliestCommitWithTrailer = analysis.earliestCommitWithTrailer;
+    if (!earliestCommitWithTrailer) {
+      // commitsWithClaudeTrailers > 0 always sets this together in
+      // analyzeCommits(); guarded here only to satisfy the type checker.
+      throw new AppError(
+        "Inconsistent analysis: trailers were found but no earliest commit was recorded",
+        "REVISION_RANGE_INVALID",
+      );
+    }
+
+    // Fail before any mutation if the earliest offending commit isn't
+    // actually reachable from the ref we're about to rewrite.
+    await this.assertAncestor(earliestCommitWithTrailer, branch);
+
     this.logger.info(
       `Found ${analysis.commitsWithClaudeTrailers} commits with Claude trailers`,
     );
     this.logger.info("Starting git filter-branch to clean commit messages...");
 
-    await this.executeCommitCleaning(analysis.earliestCommitWithTrailer);
+    const { revisionRange, parentSha } = await this.buildRevisionRange(
+      branch,
+      earliestCommitWithTrailer,
+    );
+
+    await this.executeCommitCleaning(
+      branch,
+      revisionRange,
+      parentSha,
+      earliestCommitWithTrailer,
+    );
+
+    // Verify the exact rewritten range's targeted trailers are actually gone
+    // before reporting success.
+    await this.verifyTrailersRemoved(revisionRange);
 
     this.logger.info("Commit cleaning completed successfully");
     return analysis;
@@ -170,6 +205,78 @@ export class CommitCleaner {
       earliestCommitWithTrailer,
       preview,
     };
+  }
+
+  /**
+   * Confirms `sha` is actually reachable from `branch` before it is used to
+   * bound a rewrite range. Guards against rewriting an inconsistent range if
+   * analysis and execution ever drift apart (e.g. the ref moved between
+   * calls, or a future change threads in a mismatched pair).
+   */
+  private async assertAncestor(sha: string, branch: string): Promise<void> {
+    const result = await $`git merge-base --is-ancestor ${sha} ${branch}`
+      .cwd(this.repoPath)
+      .stdout("piped")
+      .stderr("piped")
+      .noThrow();
+
+    if (result.code !== 0) {
+      throw new AppError(
+        `Earliest commit with Claude trailers (${
+          formatGitRef(sha)
+        }) is not an ancestor of ${branch}; refusing to rewrite an inconsistent range`,
+        "REVISION_RANGE_INVALID",
+      );
+    }
+  }
+
+  /**
+   * Builds the revision range to pass to `git filter-branch`, optimizing to
+   * `<parent-of-earliest-trailer-commit>..<branch>` when possible so history
+   * before the first offending commit is left untouched. Shared by the
+   * dry-run preview and the real execution so both always describe/operate
+   * on the identical range.
+   */
+  private async buildRevisionRange(
+    branch: string,
+    earliestCommitWithTrailer?: string,
+  ): Promise<{ revisionRange: string; parentSha?: string }> {
+    if (!earliestCommitWithTrailer) {
+      return { revisionRange: branch };
+    }
+
+    const parentResult = await $`git rev-parse ${earliestCommitWithTrailer}^`
+      .cwd(this.repoPath)
+      .stdout("piped")
+      .stderr("piped")
+      .noThrow();
+
+    if (parentResult.code === 0) {
+      const parentSha = parentResult.stdout.trim();
+      return { revisionRange: `${parentSha}..${branch}`, parentSha };
+    }
+
+    // No parent: the earliest offending commit is the repository root, so
+    // the entire branch history must be rewritten.
+    return { revisionRange: branch };
+  }
+
+  /**
+   * Re-analyzes `revisionRangeOrRef` after execution and fails loudly if any
+   * targeted trailers survived the rewrite, so a partial/failed cleanup is
+   * never reported as a success. Scoped to the exact range that was
+   * rewritten (rather than the whole branch) so verification is both
+   * precise and cheap.
+   */
+  private async verifyTrailersRemoved(revisionRangeOrRef: string): Promise<void> {
+    const verification = await this.analyzeCommits(revisionRangeOrRef);
+    if (verification.commitsWithClaudeTrailers > 0) {
+      throw new AppError(
+        `Commit cleaning did not remove all Claude trailers from ${revisionRangeOrRef}: ` +
+          `${verification.commitsWithClaudeTrailers} commit(s) still contain them`,
+        "COMMIT_CLEANING_VERIFICATION_FAILED",
+      );
+    }
   }
 
   private async getCommitList(
@@ -254,6 +361,9 @@ export class CommitCleaner {
   }
 
   private async executeCommitCleaning(
+    branch: string,
+    revisionRange: string,
+    parentSha: string | undefined,
     earliestCommitWithTrailer?: string,
   ): Promise<void> {
     try {
@@ -275,55 +385,28 @@ deno run --allow-read "${scriptPath}"
       await Deno.writeTextFile(wrapperPath, wrapperContent);
       await Deno.chmod(wrapperPath, 0o755);
 
-      // Get the current branch name to limit rewriting to only that branch
-      const currentBranchResult = await $`git rev-parse --abbrev-ref HEAD`
-        .cwd(this.repoPath)
-        .stdout("piped")
-        .stderr("piped")
-        .noThrow();
-      if (currentBranchResult.code !== 0) {
-        throw new AppError(
-          "Failed to get current branch name",
-          "GET_BRANCH_FAILED",
-          new Error(currentBranchResult.stderr),
-        );
-      }
-      const currentBranch = currentBranchResult.stdout.trim();
-
-      // Determine the revision range to rewrite
-      let revisionRange = currentBranch;
+      // `branch` and `revisionRange` were resolved once by the caller
+      // (resolveBranch() + buildRevisionRange()) — they must never be
+      // re-derived from the currently checked-out HEAD here, otherwise a
+      // --branch pointing at a different, un-checked-out ref would silently
+      // rewrite whatever happens to be checked out instead.
       if (earliestCommitWithTrailer) {
-        // Try to get the parent of the earliest commit
-        const parentResult = await $`git rev-parse ${earliestCommitWithTrailer}^`
-          .cwd(this.repoPath)
-          .stdout("piped")
-          .stderr("piped")
-          .noThrow();
-
-        if (parentResult.code === 0) {
-          // Parent exists, use range from parent to current branch
-          const parentSha = parentResult.stdout.trim();
-          revisionRange = `${parentSha}..${currentBranch}`;
+        if (parentSha) {
           this.logger.info(
-            `Optimizing: rewriting from ${
-              formatGitRef(
-                earliestCommitWithTrailer,
-              )
-            } to ${currentBranch}`,
+            `Optimizing: rewriting from ${formatGitRef(earliestCommitWithTrailer)} to ${branch}`,
           );
         } else {
-          // No parent (earliest commit is the first commit in repo), rewrite all history
           this.logger.info(
             `Earliest commit ${
-              formatGitRef(
-                earliestCommitWithTrailer,
-              )
+              formatGitRef(earliestCommitWithTrailer)
             } is the first commit, rewriting entire branch history`,
           );
         }
       }
 
-      // Execute git filter-branch with our TypeScript-based cleaning script
+      // Execute git filter-branch with our TypeScript-based cleaning script.
+      // Passing the resolved ref (not HEAD) means filter-branch updates that
+      // ref directly without touching the current checkout.
       const filterBranchCmd = `git filter-branch -f --msg-filter ${
         escapeShellArg(
           wrapperPath,
