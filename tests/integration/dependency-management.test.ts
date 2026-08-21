@@ -4,7 +4,8 @@
  *
  * Claude Cleaner now requires only Git; the previous Java/BFG/`sd`/mise
  * toolchain and its installer were removed. These tests assert that
- * `check-deps` reports Git alone and that `--auto-install` is accepted as a
+ * `check-deps` reports Git alone, the cleaning path tells users to install
+ * Git and ensure it is on their PATH, and `--auto-install` is accepted as a
  * clearly-announced no-op that neither installs anything nor fails the run.
  */
 
@@ -14,11 +15,13 @@ import { join } from "@std/path";
 
 async function runCLI(
   args: string[],
+  envOverrides: Record<string, string> = {},
 ): Promise<{ stdout: string; stderr: string; success: boolean }> {
-  const output = await new Deno.Command("deno", {
+  const output = await new Deno.Command(Deno.execPath(), {
     args: ["run", "--allow-all", "src/main.ts", ...args],
     stdout: "piped",
     stderr: "piped",
+    env: { ...Deno.env.toObject(), ...envOverrides },
   }).output();
   return {
     stdout: new TextDecoder().decode(output.stdout),
@@ -132,4 +135,39 @@ Deno.test("Integration - deprecated --auto-install is a no-op", async (t) => {
       }
     },
   );
+});
+
+Deno.test("Integration - missing Git in the cleaning path", async (t) => {
+  await t.step("reports Git/PATH guidance instead of auto-install", async () => {
+    const repo = await makeRepo();
+    try {
+      const result = await runCLI(
+        ["--files-only", "--execute", repo.path],
+        { PATH: "", Path: "" },
+      );
+
+      assert(
+        !result.success,
+        "the run should fail when Git is unavailable",
+      );
+
+      const combined = `${result.stdout}\n${result.stderr}`;
+      assert(
+        combined.includes("Missing required dependencies:"),
+        `expected the cleaning path to report missing dependencies, got: ${combined}`,
+      );
+      assert(
+        combined.includes(
+          "Please install Git and ensure it is available on your PATH.",
+        ),
+        `expected Git/PATH guidance, got: ${combined}`,
+      );
+      assert(
+        !combined.includes("--auto-install"),
+        `cleaning path must not recommend --auto-install, got: ${combined}`,
+      );
+    } finally {
+      await repo.cleanup();
+    }
+  });
 });

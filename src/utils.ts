@@ -240,8 +240,10 @@ export function checkForMissingDependencies(
     for (const dep of missingDeps) {
       logger.error(`  - ${dep.tool}: ${dep.error || "not found"}`);
     }
-    logger.info(
-      "Run with --auto-install to install dependencies automatically",
+    logger.error(
+      `\n${missingDeps.length} required ${
+        missingDeps.length === 1 ? "dependency is" : "dependencies are"
+      } missing. Please install Git and ensure it is available on your PATH.`,
     );
     throw new AppError("Missing dependencies", "MISSING_DEPENDENCIES");
   }
