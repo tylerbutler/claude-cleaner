@@ -26,7 +26,7 @@ async function createTestRepo(tempDir: string): Promise<string> {
     }
   };
 
-  await git("init");
+  await git("init -b main");
   await git("config user.name Test");
   await git("config user.email test@example.com");
 
@@ -383,11 +383,11 @@ Deno.test("CLI Options - Integration with Existing Flags", async (t) => {
       "--execute",
     ]);
 
-    // Will likely fail due to missing BFG dependencies, but should show execute mode
+    // The repo has no Claude files, so this completes cleanly; the only
+    // external dependency is Git, so it should always reach execute mode.
     assert(
       result.stdout.includes("Execute mode") ||
-        result.stderr.includes("MISSING_DEPENDENCIES") ||
-        result.stderr.includes("BFG_NOT_FOUND"),
+        result.stderr.includes("MISSING_DEPENDENCIES"),
     );
   });
 

@@ -107,11 +107,28 @@ jobs:
 
           echo "All binaries built successfully"
 
-          # Smoke test: verify Linux binary is executable and shows version
+          # Basic smoke test: verify the Linux binary is executable and
+          # reports its version. Foreign-platform binaries (macOS/Windows)
+          # cannot be executed on this Linux runner, so only the Linux x64
+          # binary is exercised here and in the deeper test below.
           echo ""
           echo "Running smoke test on Linux x64 binary..."
           chmod +x dist/claude-cleaner-linux-x64
           ./dist/claude-cleaner-linux-x64 --version
+
+      - name: Compiled binary smoke test (commit cleaning)
+        # Deeper artifact check beyond --version: runs the reusable
+        # tests/integration/compiled-binary-smoke.test.ts suite against the
+        # actual compiled Linux binary. It performs a real
+        # `--commits-only --execute` history rewrite in a throwaway Git repo,
+        # asserts the exact cleaned commit message and backup-branch
+        # behavior, and proves the child `git filter-branch` self-invocation
+        # never shells out to `deno` (a failing `deno` shim is placed first
+        # on PATH). Kept as a Deno test rather than inline Bash so the same
+        # check can be reused verbatim from CI in the future.
+        env:
+          CLAUDE_CLEANER_BINARY: ${{ github.workspace }}/dist/claude-cleaner-linux-x64
+        run: deno test --allow-all tests/integration/compiled-binary-smoke.test.ts
 
       - name: Run semantic-release (dry-run)
         if: ${{ inputs.dry-run }}

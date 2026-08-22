@@ -30,13 +30,13 @@ A TypeScript/Deno tool to remove Claude artifacts from Git repositories.
 
 ## Overview
 
-Claude Cleaner removes Claude-related files, commit trailers, and other artifacts from Git repository history. It combines BFG Repo-Cleaner for file removal with modern text processing for commit message cleaning.
+Claude Cleaner removes Claude-related files, commit trailers, and other artifacts from Git repository history. It rewrites history using `git filter-branch` driven by the tool's own self-invoked filters, so **Git is the only external dependency** — no Java, BFG, or `sd` runtime is required.
 
 ## Features
 
 - 🔒 **Safe**: Dry-run mode, automatic backups, and rollback capabilities
 - 🌍 **Cross-platform**: Works on Windows, macOS, and Linux
-- 📦 **Self-contained**: Compiles to a single binary with dependency auto-installation
+- 📦 **Self-contained**: Compiles to a single binary that needs only Git at runtime
 - 🎯 **Flexible**: Files-only, commits-only, or full cleaning modes
 
 ## What Gets Cleaned
@@ -95,16 +95,16 @@ See [PATTERNS.md](PATTERNS.md) for the complete pattern reference with examples 
 - **`Co-Authored-By: Claude <noreply@anthropic.com>`** - Co-authorship attributions
 - **Other Claude attribution lines** - Additional Claude-generated metadata
 
+> [!NOTE]
+> Matching is line-anchored and scoped to the terminal metadata/trailer block at the end of a commit message. A line must exactly match a known attribution pattern to be removed, and only within that trailing block — ordinary body prose that happens to mention "Claude" or the 🤖 emoji is never touched, and non-Claude trailers (e.g. `Signed-off-by`) are preserved.
+
 ## Installation
 
 ### Prerequisites
 
-The tool automatically installs all required dependencies via [mise](https://mise.jdx.dev/) when using the `--auto-install` flag. Manual installation is optional.
+The tool requires **Git** at runtime — that is the only external dependency. There is nothing to auto-install; verify Git is available with `claude-cleaner check-deps`.
 
-**Auto-installed dependencies:**
-
-- Java (for BFG Repo-Cleaner)
-- sd (modern sed replacement)
+> The `--auto-install` flag is **deprecated** and is now an accepted no-op (it prints a warning and does nothing). It remains only for backward compatibility.
 
 ### Install Claude Cleaner
 
@@ -127,8 +127,8 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 > Always backup your repository or ensure it's committed to a remote before cleaning. While automatic backups are created, having an external backup provides extra safety.
 
 ```bash
-# 1. Check dependencies (auto-installs if needed)
-claude-cleaner check-deps --auto-install
+# 1. Check that Git is available
+claude-cleaner check-deps
 
 # 2. Preview changes without modifying anything (dry-run is the default)
 claude-cleaner
@@ -149,7 +149,7 @@ Options:
   -V, --version                     Show version
   -x, --execute                     Execute changes (default: dry-run mode shows what would be changed)
   -v, --verbose                     Enable verbose output
-  --auto-install                    Automatically install required dependencies
+  --auto-install                    (Deprecated, no-op) Formerly installed external tools; only Git is required now
   --files-only                      Only remove Claude files (skip commit cleaning)
   --commits-only                    Only clean commit messages (skip file removal)
   --branch <branch>                 Specify branch to clean (default: HEAD)
@@ -189,16 +189,16 @@ claude-cleaner check-deps
 
 ```bash
 # Preview file removal only
-claude-cleaner . --files-only --auto-install
+claude-cleaner . --files-only
 
 # Execute file removal only
-claude-cleaner . --files-only --execute --auto-install
+claude-cleaner . --files-only --execute
 
 # Preview commit message cleaning only
-claude-cleaner . --commits-only --auto-install
+claude-cleaner . --commits-only
 
 # Execute commit cleaning on specific branch
-claude-cleaner . --commits-only --execute --branch feature/my-branch --auto-install
+claude-cleaner . --commits-only --execute --branch feature/my-branch
 ```
 
 ### Comprehensive Cleaning
@@ -239,19 +239,14 @@ claude-cleaner --include-all-common-patterns --execute
 These examples show advanced usage patterns for power users and troubleshooting scenarios.
 
 ```bash
-# Manual dependency setup (alternative to --auto-install)
-mise install java@temurin-21
-mise install sd
-claude-cleaner --execute
-
 # Verbose dry-run output for troubleshooting
 claude-cleaner --verbose
 
-# Check dependencies without installing
+# Check that Git is available
 claude-cleaner check-deps
 
 # Execute with verbose output
-claude-cleaner --execute --verbose --auto-install
+claude-cleaner --execute --verbose
 
 # Custom directory patterns (can be specified multiple times)
 claude-cleaner --include-dirs "claude-backup" --include-dirs "claude-workspace"
@@ -271,27 +266,28 @@ Claude Cleaner follows a systematic, safety-first approach to ensure your reposi
 
 ### Step-by-Step Process
 
-1. **🔍 Dependency Check** - Verifies Java, BFG Repo-Cleaner, and sd are available (auto-installs via mise if needed)
-2. **✅ Repository Validation** - Ensures you're in a valid Git repository with clean working tree
-3. **💾 Backup Creation** - Creates backup branches before making any changes
-4. **📁 File Removal** - Uses BFG Repo-Cleaner to efficiently remove Claude files from Git history
-5. **✏️ Commit Cleaning** - Uses git filter-branch + sd to clean commit messages and trailers
-6. **🔎 Verification** - Validates all changes were applied correctly
+1. **🔍 Dependency Check** - Verifies Git is available
+2. **✅ Repository Validation** - Ensures you're in a valid Git repository with a clean tracked working tree
+3. **🧭 Preflight** - In full mode, validates the repository, working tree, target branch, and both the file and commit plans _before_ any backup or history rewrite, so a predictable failure can't occur after files have already been rewritten
+4. **💾 Backup Creation** - Creates backups before making any changes
+5. **📁 File Removal** - Uses `git filter-branch` with a self-invoked `--index-filter` to remove Claude files from Git history
+6. **✏️ Commit Cleaning** - Uses `git filter-branch` with a self-invoked `--msg-filter` to clean commit messages and trailers
+7. **🔎 Verification** - Validates all changes were applied correctly
 
 ### Two-Phase Cleaning Process
 
 #### Phase 1: File Removal (`--files-only`)
 
 - **Scans** repository for Claude files (`CLAUDE.md`, `.claude/`, `.vscode/claude.json`, etc.)
-- **Removes** files from entire Git history using BFG Repo-Cleaner
+- **Removes** files from entire Git history using `git filter-branch` (repository-wide, all refs)
 - **Creates** backup before any modifications
 - **Preserves** commit messages unchanged
 
 #### Phase 2: Commit Cleaning (`--commits-only`)
 
 - **Analyzes** commit messages for Claude trailers and attributions
-- **Rewrites** commit history using git filter-branch
-- **Employs** sd (modern sed) for Unicode-safe text replacement
+- **Rewrites** commit history (scoped to the target ref) using `git filter-branch`
+- **Uses** a shared, Unicode-safe attribution parser for exact, line-anchored trailer removal
 - **Preserves** file content unchanged
 
 ## Safety Features
@@ -304,16 +300,16 @@ Claude Cleaner uses two different backup strategies depending on the operation, 
 
 #### File Cleaning Backups (Bare Clone)
 
-When removing files with BFG Repo-Cleaner:
+When removing files (`--files-only` or the file phase of full mode):
 
 - **Strategy**: Creates a complete **bare clone** in a separate directory
-- **Location**: `../<repo-name>-backup-<timestamp>` (outside your repository)
-- **Protection**: Since BFG rewrites commits and updates all refs in the target repository, the bare clone remains completely untouched as a separate physical repository
+- **Location**: `../claude-cleaner-backup-<timestamp>` (outside your repository)
+- **Protection**: Since file cleaning rewrites commits and updates all refs in the target repository, the bare clone remains completely untouched as a separate physical repository
 - **Recovery**: `git clone` the backup directory to restore
 
 ```bash
 # Example backup location
-/path/to/your-repo/.../your-repo-backup-2024-01-15T10-30-00-000Z
+/path/to/your-repo/.../claude-cleaner-backup-2024-01-15T10-30-00-000Z
 ```
 
 #### Commit Cleaning Backups (Branch)
@@ -322,10 +318,10 @@ When cleaning commit messages with git filter-branch:
 
 - **Strategy**: Creates a **branch** in the same repository
 - **Naming format**: `backup/pre-claude-clean-YYYY-MM-DDTHH-MM-SS-sssZ`
-- **Protection**: filter-branch only rewrites the specified revision range (current branch), leaving the backup branch pointing to original commits
+- **Protection**: filter-branch only rewrites the resolved `--branch` target (HEAD by default), leaving the backup branch pointing to the original commits. Your checked-out branch is never switched, even when `--branch` targets a different, un-checked-out branch.
 - **Recovery**: `git checkout backup/...` to restore previous state
 
-**Why different strategies?** BFG operates on entire repositories and updates all refs, so it needs physical separation. Git filter-branch allows selective rewriting by revision range, so a branch backup is sufficient and more convenient.
+**Why different strategies?** File cleaning is repository-wide and updates all refs, so it needs a physically separate bare clone. Commit cleaning is scoped to a single target ref, so an in-repo branch backup is sufficient and more convenient.
 
 ### Dry Run Mode (Default)
 
@@ -360,24 +356,21 @@ Most issues can be resolved by ensuring dependencies are installed and you're in
 
 #### "Missing dependencies" error
 
-> [!TIP]
-> The `--auto-install` flag handles dependency installation automatically.
+Claude Cleaner requires only Git. If `check-deps` reports Git as missing, install Git and ensure it is on your `PATH`.
 
 ```bash
-# Auto-install all dependencies (recommended)
-claude-cleaner check-deps --auto-install
-
-# Or install tools manually
+# Verify Git is available
+claude-cleaner check-deps
 ```
 
 #### "Not a Git repository" error
 
 ```bash
 # Specify a valid Git repository path
-claude-cleaner /path/to/git/repo --auto-install
+claude-cleaner /path/to/git/repo
 
 # For current directory
-claude-cleaner . --auto-install
+claude-cleaner .
 ```
 
 #### "Working tree not clean" error
@@ -390,7 +383,7 @@ git add . && git commit -m "Save work before cleaning"
 
 # Option 2: Stash changes temporarily
 git stash
-claude-cleaner --execute --auto-install
+claude-cleaner --execute
 git stash pop
 ```
 
@@ -399,9 +392,6 @@ git stash pop
 ```bash
 # On Unix/Linux, ensure proper permissions
 chmod +x claude-cleaner
-
-# May need elevated permissions for mise installation
-sudo claude-cleaner check-deps --auto-install
 ```
 
 ### Getting Help
@@ -442,15 +432,15 @@ git log --oneline -10
 
 ```bash
 # List backup directories (in parent directory)
-ls -d ../your-repo-backup-*
+ls -d ../claude-cleaner-backup-*
 
 # Clone the backup to restore
 cd ..
-git clone your-repo-backup-2024-01-15T10-30-00-000Z your-repo-restored
+git clone claude-cleaner-backup-2024-01-15T10-30-00-000Z your-repo-restored
 
 # Or replace your current repository
 rm -rf your-repo
-git clone your-repo-backup-2024-01-15T10-30-00-000Z your-repo
+git clone claude-cleaner-backup-2024-01-15T10-30-00-000Z your-repo
 
 # Verify restoration
 cd your-repo
@@ -501,7 +491,7 @@ git clone <repository-url>
 ### Compatibility
 
 **Q: What operating systems are supported?**\
-**A:** Windows, macOS, and Linux are all supported, but Windows is not well-tested.
+**A:** Windows, macOS, and Linux are all supported. CI runs the full test suite on all three platforms, and Windows additionally has a dedicated gate that exercises real `git filter-branch` commit-cleaning through the CLI (self-invocation is most likely to hit shell/path differences there).
 
 ### Usage Options
 
@@ -509,7 +499,7 @@ git clone <repository-url>
 **A:** Use `--files-only` or `--commits-only` flags for selective cleaning operations.
 
 **Q: Can I use it in CI/CD pipelines?**\
-**A:** It should work but has not been tested. Use `--auto-install` for dependency management and ensure proper permissions are configured.
+**A:** It should work but has not been tested. Ensure Git is installed and proper permissions are configured.
 
 ## Development
 
@@ -521,9 +511,7 @@ Contributions welcome! Please see [DEV.md](DEV.md) for development setup and con
 
 ## Acknowledgments
 
-- [BFG Repo-Cleaner](https://rtyley.github.io/bfg-repo-cleaner/) for efficient Git history cleaning
-- [mise](https://mise.jdx.dev/) for development tool management
-- [sd](https://github.com/chmln/sd) for modern text replacement
+- [Git](https://git-scm.com/) and its `filter-branch` for history rewriting
 - [Deno](https://deno.land/) for the modern TypeScript runtime
 
 ## License

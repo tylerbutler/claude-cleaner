@@ -4,12 +4,151 @@
 
 import { assert, assertExists } from "@std/assert";
 import { ensureDir, exists } from "@std/fs";
-import { join } from "@std/path";
+import { dirname, join } from "@std/path";
 import { $ } from "dax";
 
 export interface TestRepo {
   path: string;
   cleanup: () => Promise<void>;
+}
+
+/**
+ * A test repository created inside its own dedicated parent directory. The
+ * repo lives at `<parent>/repo`, so the tool's external bare-clone backup —
+ * which is written as a *sibling* of the repo (`<repo>/../<backup>`) — lands
+ * inside `parent` and is removed together with it on `cleanup()`. Integration
+ * tests that run `--execute` must use this (rather than {@link createTestRepo},
+ * whose repo is the temp-dir root) so backups never leak.
+ */
+export interface IsolatedRepo extends TestRepo {
+  /** The dedicated parent directory containing the repo and any sibling backup. */
+  parent: string;
+}
+
+/**
+ * Creates an isolated, initialized Git repository at `<parent>/repo` (see
+ * {@link IsolatedRepo}). Use for any test that executes history rewriting so
+ * the sibling bare-clone backup is contained and cleaned up.
+ */
+export async function createIsolatedRepo(name: string): Promise<IsolatedRepo> {
+  const parent = await Deno.makeTempDir({
+    prefix: `claude-cleaner-test-${name}-`,
+  });
+  const repoPath = join(parent, "repo");
+  await ensureDir(repoPath);
+  await gitCmd(repoPath, ["init", "-b", "main"]);
+  await gitCmd(repoPath, ["config", "user.email", "test@example.com"]);
+  await gitCmd(repoPath, ["config", "user.name", "Test User"]);
+  // Neutralize any developer/CI global gitignore (e.g. one ignoring *.log or
+  // *.tmp) so tests that assert on tracked/detected files are hermetic and
+  // reproducible regardless of the host's core.excludesFile. Uses a real
+  // empty file for cross-platform safety.
+  const emptyExcludes = join(parent, ".empty-gitignore");
+  await Deno.writeTextFile(emptyExcludes, "");
+  await gitCmd(repoPath, ["config", "core.excludesFile", emptyExcludes]);
+  return {
+    path: repoPath,
+    parent,
+    cleanup: async () => {
+      try {
+        await Deno.remove(parent, { recursive: true });
+      } catch {
+        // Ignore cleanup errors
+      }
+    },
+  };
+}
+
+/**
+ * Runs a `git` command in `repoPath`, returning stdout and throwing with the
+ * captured stderr on failure. Shared by integration tests so each does not
+ * re-implement the same spawn/decode/throw boilerplate.
+ */
+export async function gitCmd(
+  repoPath: string,
+  args: string[],
+): Promise<string> {
+  const result = await new Deno.Command("git", {
+    args,
+    cwd: repoPath,
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  if (!result.success) {
+    throw new Error(
+      `git ${args.join(" ")} failed: ${new TextDecoder().decode(result.stderr)}`,
+    );
+  }
+  return new TextDecoder().decode(result.stdout);
+}
+
+export interface CliResult {
+  stdout: string;
+  stderr: string;
+  success: boolean;
+  code: number;
+}
+
+/**
+ * Runs the claude-cleaner CLI (`src/main.ts`) as a real subprocess — the same
+ * production entry point compiled binaries use. `src/main.ts` is resolved to
+ * an absolute path so the CLI can be launched from an arbitrary `cwd` (e.g.
+ * the relative-repo-path backup test). `env` values are merged over the
+ * inherited environment.
+ */
+export async function runCli(
+  args: string[],
+  options: { cwd?: string; env?: Record<string, string> } = {},
+): Promise<CliResult> {
+  const mainModule = join(Deno.cwd(), "src", "main.ts");
+  const cmdOptions: Deno.CommandOptions = {
+    args: ["run", "--allow-all", mainModule, ...args],
+    stdout: "piped",
+    stderr: "piped",
+  };
+  if (options.cwd) {
+    cmdOptions.cwd = options.cwd;
+  }
+  if (options.env) {
+    cmdOptions.env = { ...Deno.env.toObject(), ...options.env };
+  }
+  const output = await new Deno.Command(Deno.execPath(), cmdOptions).output();
+  return {
+    stdout: new TextDecoder().decode(output.stdout),
+    stderr: new TextDecoder().decode(output.stderr),
+    success: output.success,
+    code: output.code,
+  };
+}
+
+/**
+ * Resolves the operating system's temp-dir root (where `Deno.makeTempDir`
+ * places entries). Used to isolate and inspect the tool's manifest temp dir
+ * for leak checks by pointing the CLI subprocess's `TMPDIR` at a scratch dir.
+ */
+export async function osTempDir(): Promise<string> {
+  const probe = await Deno.makeTempDir({ prefix: "cc-probe-" });
+  const root = dirname(probe);
+  await Deno.remove(probe, { recursive: true }).catch(() => {});
+  return root;
+}
+
+/** Lists directory entry names in `dir` whose name starts with `prefix`. */
+export async function entriesWithPrefix(
+  dir: string,
+  prefix: string,
+): Promise<string[]> {
+  const names: string[] = [];
+  try {
+    for await (const entry of Deno.readDir(dir)) {
+      if (entry.name.startsWith(prefix)) {
+        names.push(entry.name);
+      }
+    }
+  } catch {
+    // Directory may not exist; treat as empty.
+  }
+  return names;
 }
 
 export interface ClaudeArtifact {
@@ -27,7 +166,7 @@ export async function createTestRepo(name: string): Promise<TestRepo> {
   });
 
   // Initialize Git repository
-  await $`git init`.cwd(tempDir);
+  await $`git init -b main`.cwd(tempDir);
   await $`git config user.email "test@example.com"`.cwd(tempDir);
   await $`git config user.name "Test User"`.cwd(tempDir);
 

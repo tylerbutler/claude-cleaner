@@ -25,9 +25,10 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 ### Core Structure
 
 - **main.ts**: CLI entry point using Cliffy framework
-- **dependency-manager.ts**: Handles mise integration and external tool management
-- **file-cleaner.ts**: File removal logic using BFG Repo-Cleaner
-- **commit-cleaner.ts**: Commit message cleaning logic
+- **dependency-manager.ts**: Validates that Git (the only external dependency) is available
+- **file-cleaner.ts**: File removal logic using `git filter-branch` (self-invoked `--index-filter`)
+- **commit-cleaner.ts**: Commit message cleaning logic (self-invoked `--msg-filter`)
+- **internal-filter.ts**: Self-invocation seam used as the `git filter-branch` filter
 - **utils.ts**: Shared utilities
 
 ### Dependencies
@@ -36,18 +37,18 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 - **@cliffy/prompt**: Interactive prompts
 - **dax**: Shell integration library for TypeScript
 
-### External Tools (Auto-installed via mise)
+### External Tools
 
-- **BFG Repo-Cleaner**: Fast Git history cleaning (Java JAR)
-- **sd**: Modern sed replacement for text processing
-- **Java**: Required for BFG Repo-Cleaner
+- **Git**: the only external runtime dependency. History rewriting is performed
+  entirely by Git plus this tool's own self-invoked filters — no Java, BFG,
+  `sd`, or mise runtime is required.
 
 ## Development Workflow
 
 ### Two-Phase Cleaning Process
 
-1. **File Removal**: Uses BFG to completely remove Claude files from Git history
-2. **Commit Cleaning**: Uses git filter-branch + sd to clean commit messages and trailers
+1. **File Removal**: Uses `git filter-branch` to remove Claude files from Git history (repository-wide)
+2. **Commit Cleaning**: Uses `git filter-branch --msg-filter` to clean commit messages and trailers (scoped to the target ref)
 
 ### What Gets Cleaned
 
@@ -89,21 +90,19 @@ For detailed information on test structure, utilities, and development guideline
 ### External Tool Issues
 
 ```bash
-# Check tool availability
-which java && which sd
-ls ~/.cache/claude-cleaner/
+# Check tool availability (Git is the only runtime dependency)
+which git
 
-# Test tools independently
-java -version
-sd --version
-java -jar ~/.cache/claude-cleaner/bfg*.jar --version
+# Test it independently
+git --version
+
+# Or use the built-in check
+deno run --allow-all src/main.ts check-deps
 ```
 
 **Common fixes:**
 
-- Missing Java: `mise install java@temurin-21`
-- Missing sd: `mise install sd`
-- Corrupted BFG JAR: Delete and re-download
+- Missing Git: install Git and ensure it is on your `PATH`
 - Permission issues: Check file permissions
 
 ### Cross-Platform Issues
@@ -194,9 +193,10 @@ Deno.test("Module - Feature", async (t) => {
 
 ## Dependency Management
 
-The tool uses mise for managing external dependencies and downloads BFG JAR manually. All dependency installation is automated with the `--auto-install` flag.
-
-Dependencies are cached in `~/.cache/claude-cleaner/` and validated before use.
+The tool requires only **Git** at runtime and does not install anything. Git
+availability is validated up front (see `dependency-manager.ts` and
+`claude-cleaner check-deps`). The `--auto-install` flag is a deprecated no-op
+kept for backward compatibility.
 
 ## Release Process
 
@@ -280,7 +280,7 @@ All binaries are attached to the GitHub release and the package is published to 
 
 The release process is configured via:
 
-- `.releaserc.json` - semantic-release plugin configuration
+- `release.config.mjs` - semantic-release plugin configuration
 - `package.json` - npm dependencies for semantic-release
 - `.github/workflows/release.yml` - GitHub Actions workflow
 
@@ -367,7 +367,7 @@ If dry-run mode doesn't work as expected:
 npx semantic-release --dry-run
 
 # Check configuration
-cat .releaserc.json
+cat release.config.mjs
 
 # Verify conventional commits
 git log --oneline -10

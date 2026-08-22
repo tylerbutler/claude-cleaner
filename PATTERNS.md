@@ -312,53 +312,40 @@ Use `--include-all-common-patterns` when:
 > [!WARNING]
 > The `--include-all-common-patterns` flag finds _many_ more files than standard mode. Always review the dry-run output first before using `--execute`.
 
-## Performance Optimization: Batched Operations
+## History Rewriting: Exact-Path Removal
 
-Claude Cleaner optimizes performance by **batching multiple file and directory removals into a single BFG Repo-Cleaner invocation** rather than running BFG separately for each pattern. This significantly reduces execution time for repositories with multiple Claude artifacts.
+Claude Cleaner removes files by their **exact repository path** rather than by
+basename. Detected paths are normalized, de-duplicated, and pruned (an entry is
+dropped when a selected parent directory already covers it), then written to a
+NUL-delimited manifest. History is rewritten repository-wide across all refs
+with `git filter-branch --index-filter`, which removes the manifested paths from
+each commit's index using batched `git rm --cached --ignore-unmatch` calls.
 
-### How Batching Works
+### Why Exact Paths
 
-**Single BFG Pass:**
+Basename matching removes **every** file with a matching name anywhere in the
+tree. Exact-path removal only rewrites the specific detected paths, so unrelated
+files that merely share a basename are preserved:
 
 ```bash
-# Instead of N separate BFG calls:
-bfg --delete-files CLAUDE.md repo.git
-bfg --delete-files claude.json repo.git
-bfg --delete-folders .claude repo.git
+# Detected Claude artifact:
+.claude/config.json      # removed
 
-# Claude Cleaner batches into one call:
-bfg --delete-files {CLAUDE.md,claude.json} --delete-folders .claude repo.git
+# Unrelated file with the same basename:
+src/config.json          # preserved
 ```
 
-### Filename Limitations for Batching
+### Special Characters and Large Repositories
 
-Due to BFG's glob syntax requirements, certain special characters in filenames cannot be batched:
-
-**Restricted Characters:**
-
-- `,` (comma) - Pattern separator
-- `{` `}` (braces) - Pattern delimiter
-- `*` `?` (wildcards) - Glob metacharacters
-- `[` `]` (brackets) - Character class syntax
-- `;` `|` `&` (shell metacharacters)
-- `"` `'` (quotes)
-- `` (space) - Only when batching multiple patterns
-
-**Handling Special Cases:**
-
-- **Single files with spaces**: Processed without braces, spaces allowed
-- **Multiple files (batched)**: Spaces not allowed, will fail validation
-- **Invalid characters**: Tool will report error with actionable guidance
-
-**Example Error:**
-
-```
-Cannot batch BFG operations: filename 'my file.md' contains special character ' '
-that would break BFG glob syntax. Process this file separately or rename it without spaces.
-```
+Because paths are passed to `git rm` as real command arguments (never expanded
+through a shell glob), filenames containing spaces, commas, braces, quotes, or
+other special characters are handled without restriction. Removals are split
+into bounded batches so repositories with very large numbers of matching paths
+stay within command-length limits.
 
 > [!NOTE]
-> Standard Claude patterns (CLAUDE.md, .claude/, etc.) do not contain special characters and batch efficiently. Extended patterns may occasionally encounter files with special characters.
+> The external bare-clone backup created before an `--execute` run is the
+> authoritative rollback point; history rewriting never touches it.
 
 ## Related Documentation
 

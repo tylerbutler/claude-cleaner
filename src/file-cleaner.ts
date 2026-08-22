@@ -1,6 +1,7 @@
 import { basename, globToRegExp, join } from "@std/path";
 import { $, CommandBuilder } from "dax";
-import { AppError, dirExists, fileExists, formatGitRef, type Logger } from "./utils.ts";
+import { buildSelfInvocationCommandForMode } from "./internal-filter.ts";
+import { AppError, dirExists, fileExists, type Logger } from "./utils.ts";
 
 // Hybrid pattern system: use glob for simple patterns, RegExp for complex ones
 interface PatternConfig {
@@ -338,7 +339,6 @@ export interface ClaudeFile {
 
 export class FileCleaner {
   private logger: Logger;
-  private bfgPath: string | null = null;
 
   constructor(
     private options: FileCleanerOptions,
@@ -357,14 +357,22 @@ export class FileCleaner {
     this.logger.verbose("Scanning Git history for files to remove...");
 
     try {
-      // Get all files that have ever existed in Git history
-      const result = await $`git log --all --pretty=format: --name-only --diff-filter=A`
+      // Get all files that have ever existed in Git history. `-z` emits paths
+      // literally as NUL-separated records instead of Git's default C-style
+      // quoting: without it, a non-ASCII or control-character path such as
+      // `.claude/café.json` is printed as the quoted, octal-escaped token
+      // `".claude/caf\303\251.json"`, which neither matches the Claude
+      // detection patterns nor, once planned, matches the real path when
+      // `git rm` runs — silently leaving the artifact in history. NUL
+      // separation also round-trips paths that themselves contain newlines,
+      // so entries are used verbatim (no trimming that could corrupt a path
+      // with leading/trailing spaces).
+      const result = await $`git log --all -z --pretty=format: --name-only --diff-filter=A`
         .cwd(repoPath)
         .quiet();
 
       const historicalFiles = result.stdout
-        .split("\n")
-        .map((line) => line.trim())
+        .split("\0")
         .filter((line) => line.length > 0);
 
       // Remove duplicates
@@ -770,220 +778,258 @@ export class FileCleaner {
   }
 
   /**
-   * Validates that filenames don't contain characters that would break BFG glob syntax.
-   *
-   * BFG uses bash-style glob patterns where {pattern1,pattern2} is used for alternation.
-   * The characters ',' separates patterns, '{' '}' delimit the pattern list, and other
-   * special characters (* ? [ ] etc.) have glob semantics. Spaces require special handling
-   * when batching multiple patterns.
-   *
-   * @param fileNames Array of filenames to validate
-   * @param allowSpaces If true, allow spaces (only safe for single patterns without braces)
-   * @throws {AppError} with code INVALID_FILENAME if any filename contains invalid characters
+   * Normalizes a repository-relative path for the removal plan: collapses
+   * backslashes to forward slashes (Git's canonical separator), strips a
+   * leading `./`, and removes any trailing slashes.
    */
-  private validateFilenamesForBFG(fileNames: string[], allowSpaces = false): void {
-    // Characters that break BFG glob syntax
-    const invalidChars = [",", "{", "}", "*", "?", "[", "]", ";", "|", "&", '"', "'"];
-    if (!allowSpaces) {
-      invalidChars.push(" ");
-    }
-
-    for (const fileName of fileNames) {
-      for (const char of invalidChars) {
-        if (fileName.includes(char)) {
-          const suggestion = char === " "
-            ? "Process this file separately or rename it without spaces."
-            : "Remove this file manually using git commands.";
-          throw new AppError(
-            `Cannot batch BFG operations: filename '${fileName}' contains special character '${char}' ` +
-              `that would break BFG glob syntax. ${suggestion}`,
-            "INVALID_FILENAME",
-          );
-        }
-      }
-    }
+  private normalizeRemovalPath(path: string): string {
+    return path
+      .replace(/\\/g, "/")
+      .replace(/^\.\//, "")
+      .replace(/\/+$/, "");
   }
 
   /**
-   * Build BFG command arguments from file and directory lists.
-   *
-   * Batches multiple patterns into a single BFG invocation using glob syntax.
-   * Example: --delete-files {pattern1,pattern2,pattern3}
-   *
-   * For single patterns, uses direct pattern syntax without braces to support spaces.
-   * For multiple patterns, uses brace syntax but validates against spaces.
-   *
-   * @param uniqueFileNames Array of unique file basenames to delete
-   * @param uniqueDirNames Array of unique directory basenames to delete
-   * @returns Command arguments array, or null if no files/directories to process
+   * Builds the normalized, deduplicated set of exact historical paths to
+   * rewrite out of Git history. Paths are canonicalized, de-duplicated, and
+   * sorted; any entry that is a descendant of an already-selected directory
+   * is dropped because removing the ancestor directory (via `git rm --cached
+   * -r`) already covers it. Unlike the previous BFG basename approach, every
+   * returned entry is an exact repository path, so files sharing a basename
+   * with a Claude artifact elsewhere in the tree are preserved.
    */
-  private buildBFGCommand(
-    uniqueFileNames: string[],
-    uniqueDirNames: string[],
-  ): string[] | null {
-    if (uniqueFileNames.length === 0 && uniqueDirNames.length === 0) {
-      return null;
-    }
+  buildRemovalPlan(claudeFiles: ClaudeFile[]): string[] {
+    const normalized = claudeFiles
+      .map((file) => this.normalizeRemovalPath(file.path))
+      .filter((path) => path.length > 0);
 
-    const bfgArgs = ["java", "-jar", this.bfgPath || "<bfg-path>"];
+    // Sorting ascending places any ancestor directory immediately before its
+    // descendants (e.g. ".claude" sorts before ".claude/config.json"), so a
+    // single forward pass can drop descendants covered by a selected ancestor.
+    const uniqueSorted = [...new Set(normalized)].sort();
 
-    // Handle file patterns
-    if (uniqueFileNames.length > 0) {
-      if (uniqueFileNames.length === 1) {
-        // Single pattern: allow spaces, no braces needed
-        // Length check above ensures [0] exists
-        const fileName = uniqueFileNames[0]!;
-        this.validateFilenamesForBFG([fileName], true);
-        bfgArgs.push("--delete-files", fileName);
-      } else {
-        // Multiple patterns: batch with braces, disallow spaces
-        this.validateFilenamesForBFG(uniqueFileNames, false);
-        bfgArgs.push("--delete-files", `{${uniqueFileNames.join(",")}}`);
+    const plan: string[] = [];
+    for (const path of uniqueSorted) {
+      const coveredByAncestor = plan.some(
+        (selected) => path === selected || path.startsWith(`${selected}/`),
+      );
+      if (!coveredByAncestor) {
+        plan.push(path);
       }
     }
 
-    // Handle directory patterns
-    if (uniqueDirNames.length > 0) {
-      if (uniqueDirNames.length === 1) {
-        // Single pattern: allow spaces, no braces needed
-        // Length check above ensures [0] exists
-        const dirName = uniqueDirNames[0]!;
-        this.validateFilenamesForBFG([dirName], true);
-        bfgArgs.push("--delete-folders", dirName);
-      } else {
-        // Multiple patterns: batch with braces, disallow spaces
-        this.validateFilenamesForBFG(uniqueDirNames, false);
-        bfgArgs.push("--delete-folders", `{${uniqueDirNames.join(",")}}`);
-      }
-    }
-
-    bfgArgs.push("--no-blob-protection", this.options.repoPath);
-
-    return bfgArgs;
+    return plan;
   }
 
-  async removeFilesWithBFG(claudeFiles: ClaudeFile[]): Promise<void> {
+  /**
+   * Lists the refs that a repository-wide `git filter-branch -- --all` rewrite
+   * would touch. `--all` covers every ref under `refs/` (local branches, tags,
+   * remote-tracking refs, notes, …), so this enumerates all of them rather
+   * than just `refs/heads`/`refs/tags` — otherwise the dry-run scope display
+   * would understate what an execute run actually rewrites. Used only to
+   * surface the rewrite scope in dry-run output; the actual rewrite always
+   * uses `-- --all`.
+   */
+  private async getRefsToRewrite(): Promise<string[]> {
+    try {
+      const result = await $`git for-each-ref --format=${"%(refname)"}`
+        .cwd(this.options.repoPath)
+        .stdout("piped")
+        .quiet();
+      return result.stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+    } catch {
+      return [];
+    }
+  }
+
+  async removeFiles(claudeFiles: ClaudeFile[]): Promise<void> {
     if (claudeFiles.length === 0) {
       this.logger.info("No Claude files found to remove");
+      return;
+    }
+
+    const removalPaths = this.buildRemovalPlan(claudeFiles);
+
+    if (this.options.dryRun) {
+      await this.previewRemoval(removalPaths);
       return;
     }
 
     this.logger.info(
       `Removing ${claudeFiles.length} Claude files from Git history...`,
     );
+    await this.executeRemoval(removalPaths);
+  }
 
-    if (this.options.dryRun) {
-      this.logger.info("[DRY RUN] Would remove the following files:");
-      for (const file of claudeFiles) {
-        let logLine = `  - ${file.path} (${file.reason})`;
-        if (file.earliestCommit) {
-          logLine += `\n    First appeared in: ${
-            formatGitRef(file.earliestCommit.hash)
-          } (${file.earliestCommit.date})`;
-          logLine += `\n    Commit: ${file.earliestCommit.message}`;
-        }
-        this.logger.info(logLine);
-      }
-
-      // Show commands that would be executed
-      const files = claudeFiles.filter((f) => f.type === "file");
-      const directories = claudeFiles.filter((f) => f.type === "directory");
-
-      const fileNames = files.map((f) => basename(f.path));
-      const uniqueFileNames = [...new Set(fileNames)];
-      const dirNames = directories.map((d) => basename(d.path));
-      const uniqueDirNames = [...new Set(dirNames)];
-
-      const bfgArgs = this.buildBFGCommand(uniqueFileNames, uniqueDirNames);
-
-      if (bfgArgs) {
-        this.logger.info("\n[DRY RUN] Commands that would be executed:");
-        this.logger.info(`  ${bfgArgs.join(" ")}`);
-        this.logger.info(`  git reflog expire --expire=now --all`);
-        this.logger.info(`  git gc --prune=now --aggressive`);
-      }
-
+  /**
+   * Surfaces the exact removal plan a real run would execute: the canonical
+   * paths, the refs that would be rewritten, and the concrete commands. This
+   * is the dry-run counterpart of {@link executeRemoval}; the per-file listing
+   * with reasons/first-commit is handled separately by the caller.
+   */
+  private async previewRemoval(removalPaths: string[]): Promise<void> {
+    if (removalPaths.length === 0) {
+      this.logger.info("[DRY RUN] No files or directories to remove");
       return;
     }
 
-    // Check if BFG is available
-    if (!this.bfgPath) {
-      throw new AppError(
-        "BFG Repo-Cleaner not found. Please install it or use --auto-install",
-        "BFG_NOT_FOUND",
-      );
+    this.logger.info(
+      "\n[DRY RUN] Exact paths that would be rewritten out of history:",
+    );
+    for (const path of removalPaths) {
+      this.logger.info(`  - ${path}`);
     }
 
+    const refs = await this.getRefsToRewrite();
+    this.logger.info(
+      "\n[DRY RUN] Refs that would be rewritten (git filter-branch -- --all):",
+    );
+    if (refs.length > 0) {
+      for (const ref of refs) {
+        this.logger.info(`  - ${ref}`);
+      }
+    } else {
+      this.logger.info("  (all refs)");
+    }
+
+    const filterCommand = buildSelfInvocationCommandForMode("index-filter", [
+      "<manifest-file>",
+    ]);
+    this.logger.info("\n[DRY RUN] Commands that would be executed:");
+    this.logger.info(
+      `  git filter-branch -f --index-filter '${filterCommand}' --tag-name-filter cat -- --all`,
+    );
+    this.logger.info(
+      `  git for-each-ref --format='delete %(refname)' refs/original | git update-ref --stdin`,
+    );
+    this.logger.info(`  git reflog expire --expire=now --all`);
+    this.logger.info(`  git gc --prune=now --aggressive`);
+  }
+
+  private async executeRemoval(removalPaths: string[]): Promise<void> {
+    if (removalPaths.length === 0) {
+      this.logger.info("No files or directories to remove");
+      return;
+    }
+
+    const tempDir = await Deno.makeTempDir({ prefix: "claude-cleaner-" });
+    const manifestPath = join(tempDir, "exact-paths.manifest");
+
     try {
-      // BFG only works with filenames, not paths. Separate by type.
-      const files = claudeFiles.filter((f) => f.type === "file");
-      const directories = claudeFiles.filter((f) => f.type === "directory");
+      // NUL-delimited manifest matches the convention read by the internal
+      // index-filter mode and safely round-trips paths containing newlines.
+      await Deno.writeTextFile(manifestPath, removalPaths.join("\0") + "\0");
 
-      // Extract unique basenames (BFG requirement)
-      // Note: basename matching means all files/dirs with the same name across different
-      // paths will be removed (e.g., both src/CLAUDE.md and docs/CLAUDE.md).
-      // This is the intended behavior - the tool removes all instances of these patterns.
-      const fileNames = files.map((f) => basename(f.path));
-      const uniqueFileNames = [...new Set(fileNames)];
-      const dirNames = directories.map((d) => basename(d.path));
-      const uniqueDirNames = [...new Set(dirNames)];
+      this.logger.verbose(
+        `Wrote ${removalPaths.length} exact path(s) to manifest: ${manifestPath}`,
+      );
 
-      // Build BFG command with batched patterns
-      const bfgArgs = this.buildBFGCommand(uniqueFileNames, uniqueDirNames);
+      // Git evaluates the --index-filter value as a shell command once per
+      // rewritten commit; the self-invocation re-enters this program's hidden
+      // index-filter mode, which reads the manifest and runs batched
+      // `git rm --cached` against each commit's index.
+      const filterCommand = buildSelfInvocationCommandForMode("index-filter", [
+        manifestPath,
+      ]);
 
-      if (!bfgArgs) {
-        this.logger.info("No files or directories to remove");
-        return;
-      }
+      this.logger.info(
+        `Running: git filter-branch -f --index-filter '${filterCommand}' --tag-name-filter cat -- --all`,
+      );
 
-      // Log what we're batching
-      if (uniqueFileNames.length > 0) {
-        this.logger.verbose(
-          `Batching ${uniqueFileNames.length} file patterns: ${uniqueFileNames.join(", ")}`,
+      const filterResult =
+        await $`git filter-branch -f --index-filter ${filterCommand} --tag-name-filter cat -- --all`
+          .cwd(this.options.repoPath)
+          .env("FILTER_BRANCH_SQUELCH_WARNING", "1")
+          .stdout("piped")
+          .stderr("piped")
+          .noThrow();
+
+      if (filterResult.code !== 0) {
+        throw new AppError(
+          "git filter-branch failed while rewriting Git history",
+          "FILTER_BRANCH_FAILED",
+          new Error(filterResult.stderr),
         );
       }
 
-      if (uniqueDirNames.length > 0) {
-        this.logger.verbose(
-          `Batching ${uniqueDirNames.length} directory patterns: ${uniqueDirNames.join(", ")}`,
-        );
-      }
-
-      // Execute single BFG pass
-      const bfgCmd = bfgArgs.join(" ");
-      this.logger.info(`Running: ${bfgCmd}`);
-      const builder = new CommandBuilder()
-        .command(bfgArgs)
-        .cwd(this.options.repoPath);
-      await builder;
-
-      // Clean up the repository
-      this.logger.verbose("Cleaning up Git repository...");
-      this.logger.info(`Running: git reflog expire --expire=now --all`);
-      await $`git reflog expire --expire=now --all`.cwd(this.options.repoPath);
-      this.logger.info(`Running: git gc --prune=now --aggressive`);
-      await $`git gc --prune=now --aggressive`.cwd(this.options.repoPath);
+      await this.cleanupAfterRewrite();
 
       this.logger.info("Files successfully removed from Git history");
     } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
       throw new AppError(
-        `Failed to remove files with BFG: ${
+        `Failed to remove files from Git history: ${
           error instanceof Error ? error.message : String(error)
         }`,
-        "BFG_ERROR",
+        "FILTER_BRANCH_FAILED",
         error instanceof Error ? error : undefined,
       );
+    } finally {
+      await Deno.remove(tempDir, { recursive: true }).catch(() => {});
     }
   }
 
-  async setBFGPath(bfgPath: string): Promise<void> {
-    if (await fileExists(bfgPath)) {
-      this.bfgPath = bfgPath;
-      this.logger.verbose(`BFG path set: ${bfgPath}`);
-    } else {
+  /**
+   * Post-rewrite cleanup. `git filter-branch` stashes the pre-rewrite tips
+   * under `refs/original/*`, which keep the removed blobs reachable; those
+   * refs must be deleted before expiring the reflog and garbage-collecting so
+   * the old objects are actually pruned. The authoritative rollback point is
+   * the external bare-clone backup, not `refs/original`.
+   */
+  private async cleanupAfterRewrite(): Promise<void> {
+    this.logger.verbose("Cleaning up Git repository...");
+
+    const originalRefsResult = await $`git for-each-ref --format=${"%(refname)"} refs/original`
+      .cwd(this.options.repoPath)
+      .stdout("piped")
+      .noThrow();
+
+    const originalRefs = originalRefsResult.code === 0
+      ? originalRefsResult.stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+      : [];
+
+    for (const ref of originalRefs) {
+      this.logger.info(`Running: git update-ref -d ${ref}`);
+      await $`git update-ref -d ${ref}`.cwd(this.options.repoPath).noThrow();
+    }
+
+    this.logger.info(`Running: git reflog expire --expire=now --all`);
+    await $`git reflog expire --expire=now --all`.cwd(this.options.repoPath);
+    this.logger.info(`Running: git gc --prune=now --aggressive`);
+    await $`git gc --prune=now --aggressive`.cwd(this.options.repoPath);
+  }
+
+  /**
+   * Ensures the working tree has no staged or unstaged changes to tracked
+   * files before rewriting history. `git filter-branch` refuses to run with a
+   * dirty tree ("Cannot rewrite branches: You have unstaged changes."), so
+   * this surfaces a clear, actionable error up front. Untracked files are
+   * allowed, matching filter-branch's own `require_clean_work_tree` behavior.
+   *
+   * Public so full-mode orchestration can validate the tracked working tree
+   * once in its preflight (before either the file- or commit-cleaning pass
+   * creates a backup) rather than only inside {@link cleanFiles}.
+   */
+  async validateWorkingTreeClean(): Promise<void> {
+    const result = await $`git status --porcelain --untracked-files=no`
+      .cwd(this.options.repoPath)
+      .stdout("piped")
+      .stderr("piped")
+      .noThrow();
+
+    if (result.code === 0 && result.stdout.trim().length > 0) {
       throw new AppError(
-        `BFG Repo-Cleaner not found at: ${bfgPath}`,
-        "BFG_NOT_FOUND",
+        "Working tree has uncommitted changes to tracked files. " +
+          "Commit or stash them before rewriting Git history.",
+        "WORKING_TREE_DIRTY",
       );
     }
   }
@@ -1016,10 +1062,16 @@ export class FileCleaner {
 
     const claudeFiles = await this.detectClaudeFiles();
 
+    // History rewriting requires a clean tracked working tree; check before
+    // creating a backup so a dirty repo fails fast without side effects.
+    if (claudeFiles.length > 0) {
+      await this.validateWorkingTreeClean();
+    }
+
     if (this.options.createBackup) {
       await this.createBackup();
     }
 
-    await this.removeFilesWithBFG(claudeFiles);
+    await this.removeFiles(claudeFiles);
   }
 }

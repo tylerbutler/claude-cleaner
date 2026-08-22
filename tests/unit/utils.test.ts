@@ -1,73 +1,66 @@
 /**
- * Unit tests for utilities module
+ * Focused unit tests for utility helpers.
  */
 
-// These tests will be implemented when utils.ts is available
-// For now, they serve as specifications for the expected behavior
+import { assert, assertEquals } from "@std/assert";
+import {
+  AppError,
+  checkForMissingDependencies,
+  type DependencyCheckResult,
+  type Logger,
+} from "../../src/utils.ts";
 
-Deno.test("Utils - Cross-platform Path Utilities", async (t) => {
-  await t.step("should normalize paths correctly", async () => {
-    // TODO: Implement when src/utils.ts exists
-    // const utils = new Utils();
-    // const normalized = utils.normalizePath("path/with\\mixed/separators");
-    // assertEquals(normalized, join("path", "with", "mixed", "separators"));
-  });
+class RecordingLogger implements Logger {
+  readonly infoMessages: string[] = [];
+  readonly warnMessages: string[] = [];
+  readonly errorMessages: string[] = [];
+  readonly verboseMessages: string[] = [];
+  readonly debugMessages: string[] = [];
 
-  await t.step("should handle absolute paths", async () => {
-    // TODO: Test absolute path handling
-  });
+  info(message: string): void {
+    this.infoMessages.push(message);
+  }
 
-  await t.step("should handle relative paths", async () => {
-    // TODO: Test relative path handling
-  });
+  warn(message: string): void {
+    this.warnMessages.push(message);
+  }
 
-  await t.step("should handle paths with spaces", async () => {
-    // TODO: Test paths with special characters
-  });
-});
+  error(message: string): void {
+    this.errorMessages.push(message);
+  }
 
-Deno.test("Utils - Logging and Output", async (t) => {
-  await t.step("should provide different log levels", async () => {
-    // TODO: Test logging functionality
-  });
+  verbose(message: string): void {
+    this.verboseMessages.push(message);
+  }
 
-  await t.step("should format output consistently", async () => {
-    // TODO: Test output formatting
-  });
+  debug(message: string): void {
+    this.debugMessages.push(message);
+  }
+}
 
-  await t.step("should handle verbose mode", async () => {
-    // TODO: Test verbose output
-  });
+Deno.test("Utils - missing dependency guidance", () => {
+  const logger = new RecordingLogger();
+  const depResults: DependencyCheckResult[] = [
+    { tool: "git", available: false, error: "not found" },
+  ];
 
-  await t.step("should support colored output", async () => {
-    // TODO: Test colored output
-  });
-});
+  let thrown: unknown;
+  try {
+    checkForMissingDependencies(depResults, false, logger);
+  } catch (error) {
+    thrown = error;
+  }
 
-Deno.test("Utils - Error Handling", async (t) => {
-  await t.step("should create typed errors", async () => {
-    // TODO: Test error type creation
-  });
+  assert(thrown instanceof AppError);
+  assertEquals((thrown as AppError).code, "MISSING_DEPENDENCIES");
 
-  await t.step("should provide error context", async () => {
-    // TODO: Test error context handling
-  });
+  assertEquals(logger.errorMessages[0], "Missing required dependencies:");
+  assertEquals(logger.errorMessages[1], "  - git: not found");
+  assertEquals(
+    logger.errorMessages[2],
+    "\n1 required dependency is missing. Please install Git and ensure it is available on your PATH.",
+  );
 
-  await t.step("should handle error reporting", async () => {
-    // TODO: Test error reporting
-  });
-});
-
-Deno.test("Utils - Common Types and Interfaces", async (t) => {
-  await t.step("should export configuration types", async () => {
-    // TODO: Test type definitions
-  });
-
-  await t.step("should export result types", async () => {
-    // TODO: Test result type handling
-  });
-
-  await t.step("should export option types", async () => {
-    // TODO: Test option type definitions
-  });
+  const combined = logger.errorMessages.join("\n");
+  assert(!combined.includes("--auto-install"));
 });

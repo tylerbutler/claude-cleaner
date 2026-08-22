@@ -10,17 +10,33 @@ tests/
 │   ├── dependency-manager.test.ts
 │   ├── file-cleaner.test.ts
 │   ├── commit-cleaner.test.ts
+│   ├── commit-message-filter.test.ts
+│   ├── internal-filter.test.ts
 │   ├── utils.test.ts
 │   ├── main.test.ts
+│   ├── pattern-matcher.test.ts
+│   ├── pattern-validation.test.ts
+│   ├── file-pattern-loading.test.ts
+│   ├── no-defaults-behavior.test.ts
+│   ├── all-common-patterns.test.ts
 │   └── test-framework.test.ts
 ├── integration/             # Integration tests for full workflows
 │   ├── full-workflow.test.ts
+│   ├── cli-orchestration.test.ts
+│   ├── cli-options.test.ts
+│   ├── exact-path-removal.test.ts
+│   ├── commit-branch-scoping.test.ts
+│   ├── commit-message-filtering.test.ts
+│   ├── internal-filter-invocation.test.ts
+│   ├── compiled-binary-smoke.test.ts
 │   ├── dependency-management.test.ts
+│   ├── pattern-matching.test.ts
+│   ├── all-common-patterns-cli.test.ts
 │   └── cross-platform.test.ts
 ├── utils/                   # Test utilities and helpers
 │   ├── test-helpers.ts      # Common test helper functions
 │   └── fixtures.ts          # Git repository fixtures
-├── run-all-tests.ts         # Test runner script
+├── run-all-tests.ts         # Test runner script (registry of all maintained suites)
 └── README.md               # This file
 ```
 
@@ -65,24 +81,39 @@ The custom test runner (`tests/run-all-tests.ts`) provides additional features:
 Unit tests focus on individual modules and functions in isolation:
 
 - **test-framework.test.ts**: Validates the testing framework itself
-- **dependency-manager.test.ts**: Tests dependency installation and validation
-- **file-cleaner.test.ts**: Tests Claude file detection and BFG integration
-- **commit-cleaner.test.ts**: Tests commit message cleaning and git filter-branch
+- **dependency-manager.test.ts**: Tests Git-only dependency detection and reporting
+- **file-cleaner.test.ts**: Tests Claude file detection and exact-path removal-plan building (descendant pruning, same-basename preservation)
+- **commit-cleaner.test.ts**: Tests commit-message analysis, branch resolution (`resolveBranch`), and cleaning preflight (`planCleaning`)
+- **commit-message-filter.test.ts**: Tests the shared, line-anchored attribution parser used by both analysis and the `--msg-filter` self-invocation
+- **internal-filter.test.ts**: Tests the hidden self-invocation seam (`__internal-filter`) used by `git filter-branch`, including manifest reading and batched `git rm`
 - **utils.test.ts**: Tests utility functions and cross-platform helpers
 - **main.test.ts**: Tests CLI argument parsing and command coordination
+- **pattern-matcher.test.ts**: Tests the hybrid glob/regex pattern matcher
 - **pattern-validation.test.ts**: Tests directory pattern validation and safety
 - **file-pattern-loading.test.ts**: Tests loading patterns from files
 - **no-defaults-behavior.test.ts**: Tests `--no-defaults` flag behavior
+- **all-common-patterns.test.ts**: Tests `--include-all-common-patterns` extended pattern matching
 
 ### Integration Tests
 
 Integration tests verify complete workflows and cross-module interactions:
 
-- **full-workflow.test.ts**: End-to-end cleaning workflows (files + commits)
-- **dependency-management.test.ts**: Complete dependency installation process
-- **cross-platform.test.ts**: Platform-specific behavior and compatibility
+- **full-workflow.test.ts**: End-to-end cleaning workflows (dual-plan dry-run, backup/recovery for both strategies, no temp-file leaks)
+- **cli-orchestration.test.ts**: Full-mode preflight (fails before any mutation on a bad `--branch` or dirty tree), relative-path backups, and mode coordination
+- **cli-options.test.ts**: CLI flag parsing and directory-pattern integration
+- **exact-path-removal.test.ts**: Exact-path history rewriting via real `git filter-branch --index-filter` (same-basename preservation, dry-run ref/command preview)
+- **commit-branch-scoping.test.ts**: Confirms `--branch <target>` rewrites only the resolved target ref and never switches or mutates the checked-out branch
+- **commit-message-filtering.test.ts**: Commit-message filtering via a real `git filter-branch --msg-filter` self-invocation
+- **internal-filter-invocation.test.ts**: Spawns the real CLI to exercise `__internal-filter msg-filter`/`index-filter` end to end, and confirms the marker never appears in `--help`
+- **compiled-binary-smoke.test.ts**: Runs `--commits-only --execute` against a
+  compiled Linux binary (set `CLAUDE_CLEANER_BINARY` to its path; otherwise
+  skipped). Verifies the exact cleaned commit message, backup-branch
+  behavior, and that the self-invoked `git filter-branch` filter never
+  shells out to `deno`
+- **dependency-management.test.ts**: `check-deps` reports Git only, and `--auto-install` is a no-op that still completes the run
 - **pattern-matching.test.ts**: Tests directory pattern matching in real repositories
-- **cli-options.test.ts**: Tests CLI flag parsing for pattern options
+- **all-common-patterns-cli.test.ts**: Tests `--include-all-common-patterns` through the CLI
+- **cross-platform.test.ts**: Platform-specific behavior and compatibility
 
 ## Test Utilities
 
@@ -91,6 +122,7 @@ Integration tests verify complete workflows and cross-module interactions:
 Provides essential testing utilities:
 
 - `createTestRepo()`: Creates temporary Git repositories
+- `createIsolatedRepo()`: Creates a repo inside its own parent directory (so sibling bare-clone backups are contained) with a per-repo `core.excludesFile` for hermetic behavior regardless of global gitignore
 - `addClaudeArtifacts()`: Adds Claude files to repositories
 - `createCommitsWithClaudeTrailers()`: Creates commits with Claude attribution
 - `assertValidGitRepo()`: Validates Git repository state
@@ -100,6 +132,10 @@ Provides essential testing utilities:
 - `assertNoClaudeArtifacts()`: Assertion for clean content
 - `createMockTool()`: Creates mock external tools
 - `runWithPath()`: Executes commands with custom PATH
+- `gitCmd()`: Runs a `git` subcommand against a repo path
+- `runCli()`: Spawns the real `src/main.ts` CLI as a subprocess
+- `osTempDir()`: Resolves a platform-appropriate temp directory
+- `entriesWithPrefix()`: Lists directory entries matching a name prefix (e.g. for locating generated backup directories/branches)
 
 ### Fixtures (`utils/fixtures.ts`)
 
@@ -275,13 +311,14 @@ try {
 }
 ```
 
-## Expected Test Status
+## Test Status
 
-Currently, the test suite is designed to work with placeholder implementations. As the actual modules are developed:
-
-1. **Framework tests**: ✅ Should pass immediately (testing framework itself)
-2. **Unit tests**: ⏳ Will need implementation updates as modules are developed
-3. **Integration tests**: ⏳ Will pass once all modules are integrated
+All suites test real, implemented behavior against the current CLI/library
+code (not placeholders or stubs) — including real `git filter-branch`
+rewrites through the CLI where applicable. Run `deno run --allow-all
+tests/run-all-tests.ts` to execute every suite registered in
+`tests/run-all-tests.ts`, or `deno test --allow-all` to run everything Deno
+discovers under `tests/**/*.test.ts`.
 
 ## Continuous Integration
 

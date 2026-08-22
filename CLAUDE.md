@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Claude Cleaner is a TypeScript/Deno tool that removes Claude artifacts (files and commit trailers) from Git repositories. It uses BFG Repo-Cleaner for file removal and git filter-branch with sd for commit message cleaning.
+Claude Cleaner is a TypeScript/Deno tool that removes Claude artifacts (files and commit trailers) from Git repositories. It uses `git filter-branch` for both file removal (via an internal index-filter self-invocation) and commit message cleaning (via an internal msg-filter self-invocation).
 
 ## Essential Commands
 
@@ -60,24 +60,26 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 
 **Dependency Manager (`dependency-manager.ts`)**:
 
-- Auto-installs external tools via mise if `--auto-install` flag is used
-- Manages: Java (for BFG), sd (text processor), BFG Repo-Cleaner JAR
-- Cache directory: `~/.cache/claude-cleaner/`
-- Key methods: `checkAllDependencies()`, `installAllDependencies()`
+- Validates that **Git** is available — the only external runtime dependency
+- History rewriting is performed entirely by Git plus this tool's own
+  self-invoked `git filter-branch` filters (see `internal-filter.ts`); the
+  former Java/BFG/`sd`/mise toolchain has been removed
+- Does not install anything; `--auto-install` is a deprecated no-op
+- Key methods: `checkGit()`, `checkAllDependencies()`
 
 **File Cleaner (`file-cleaner.ts`)**:
 
 - Pattern-based file detection: exact basename matching (safe mode)
 - Standard patterns: `CLAUDE.md`, `.claude/`, `claudedocs/`, `.serena/`, `.vscode/claude.json`
 - Extended patterns: Available via `--include-all-common-patterns` flag
-- Uses BFG Repo-Cleaner for efficient Git history rewriting
+- Uses `git filter-branch` with a self-invoked `--index-filter` for exact-path Git history rewriting
 - Key methods: `detectClaudeFiles()`, `cleanFiles()`, `validateRepository()`
 
 **Commit Cleaner (`commit-cleaner.ts`)**:
 
 - Removes Claude trailers from commit messages
 - Patterns: `🤖 Generated with [Claude Code]`, `Co-Authored-By: Claude <...>`
-- Uses git filter-branch with sd for text replacement
+- Uses `git filter-branch --msg-filter` wired to the program's own hidden self-invocation (no external script/Bash wrapper); message parsing is delegated to the shared `commit-message-filter.ts`
 - Key methods: `cleanCommits()`, `createBackup()`, `validateGitRepository()`
 
 ### Pattern System
@@ -107,18 +109,18 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 
 1. Scan repository for Claude files using pattern matching
 2. Validate Git repository structure
-3. Create backup branch (if `--execute`)
-4. Generate BFG blob-removal script from detected files
-5. Run BFG Repo-Cleaner to remove files from Git history
+3. Create backup (bare clone) if `--execute`
+4. Build a deduplicated, exact-path removal manifest from detected files
+5. Run `git filter-branch -f --index-filter <self-invocation> --tag-name-filter cat -- --all` to remove those exact paths from history
 6. Run `git reflog expire --expire=now --all && git gc --prune=now --aggressive`
 
 ### Commit Cleaning Process
 
-1. Analyze commit history for Claude trailers
+1. Analyze commit history with the shared `commit-message-filter.ts` parser (same logic used to rewrite)
 2. Create backup branch (if `--execute`)
-3. Generate git filter-branch command with sd replacements
-4. Apply sd patterns to remove each trailer type
-5. Verify changes and clean up backup refs
+3. Run `git filter-branch -f --msg-filter '<self-invocation>' <range>`, where the filter re-invokes this program's hidden `__internal-filter msg-filter` mode
+4. The filter reads each commit message on stdin and writes the cleaned message to stdout (attribution removed only from the terminal trailer region)
+5. Verify targeted trailers are gone from the rewritten range and clean up backup refs
 
 ### Pattern Matching Logic (`file-cleaner.ts`)
 
@@ -130,21 +132,21 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 
 ### Test Organization
 
-- **Unit tests** (`tests/unit/`): Module-level testing without Git operations
-- **Integration tests** (`tests/integration/`): Full workflow tests with real Git repositories
+- **Unit tests** (`tests/unit/`): Module-level testing; many use real temporary Git repositories for realistic coverage without going through the full CLI
+- **Integration tests** (`tests/integration/`): Full workflow tests that spawn the real CLI/binary against real Git repositories
 - **Test utilities** (`tests/utils/`): Fixtures and helpers for test setup
 
 ### Key Test Coverage
 
 - Pattern matching: 41 test steps covering all directory patterns
 - Dry-run mode: Ensures no changes are made without `--execute`
-- Dependency management: Auto-install, version checking, path resolution
+- Dependency management: Git-only detection/reporting and the `--auto-install` no-op
 - Error handling: Invalid options, missing dependencies, dirty working tree
 - Cross-platform: Windows, macOS, Linux compatibility tests
 
 ### Test Fixtures
 
-- Located in `tests/fixtures/`
+- Located in `tests/utils/fixtures.ts` (and `tests/utils/test-helpers.ts`)
 - Git repositories created programmatically for each test
 - Cleaned up automatically after test completion
 
@@ -159,9 +161,9 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 
 ### Modifying Commit Trailer Patterns
 
-1. Edit `claudeTrailerPatterns` array in `commit-cleaner.ts`
-2. Add test cases in `tests/unit/commit-cleaner.test.ts`
-3. Ensure patterns use proper regex escaping for `sd` tool
+1. Edit the `CLAUDE_ATTRIBUTION_PATTERNS` array in `commit-message-filter.ts` (the single shared parser used by both commit analysis and the internal `git filter-branch --msg-filter` self-invocation)
+2. Keep patterns line-anchored (match a whole physical line) so ordinary body prose that merely mentions Claude is never removed
+3. Add test cases in `tests/unit/commit-message-filter.test.ts`
 
 ### Testing New Features
 
@@ -178,16 +180,17 @@ deno compile --allow-all --output claude-cleaner src/main.ts
 - `dax`: Shell integration for TypeScript
 - `@std/path`, `@std/fs`, `@std/assert`, etc.: Deno standard library
 
-**External Tools** (auto-installed via mise):
+**External Tools**:
 
-- BFG Repo-Cleaner 1.14.0 (Java JAR): Git history cleaning
-- sd: Modern sed replacement for Unicode-safe text processing
-- Java (Temurin 21): Required for BFG Repo-Cleaner
+- **Git**: the only external runtime dependency. History rewriting uses
+  `git filter-branch` driven by this tool's own self-invoked filters, so no
+  Java, BFG, `sd`, or mise runtime is required. (`--auto-install` is a
+  deprecated no-op.)
 
 **Development Tools**:
 
-- Deno 1.x: TypeScript runtime and toolchain
-- mise: Development tool version management
+- Deno 2.x: TypeScript runtime and toolchain
+- mise: Development tool version management (optional, for pinning Deno)
 
 ## TypeScript Configuration
 
@@ -207,7 +210,7 @@ Custom `AppError` class in `utils.ts` with error codes:
 
 - `NOT_GIT_REPO`: Invalid Git repository
 - `INVALID_OPTIONS`: Conflicting CLI options
-- `WORKING_TREE_DIRTY`: Uncommitted changes present
-- `SD_NOT_AVAILABLE`: sd tool not found
-- `BFG_NOT_AVAILABLE`: BFG Repo-Cleaner not found
-- `DEPENDENCY_CHECK_FAILED`: Dependency validation failed
+- `WORKING_TREE_DIRTY`: Uncommitted changes to tracked files present
+- `REPO_PATH_REQUIRED`: No repository path argument provided
+- `GET_BRANCH_FAILED`: Requested `--branch` does not exist
+- `MISSING_DEPENDENCIES`: Required dependency (Git) not found

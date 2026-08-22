@@ -23,7 +23,7 @@ async function createTestRepo(tempDir: string): Promise<string> {
     await process.output();
   };
 
-  await git("init");
+  await git("init -b main");
   await git("config user.name Test");
   await git("config user.email test@example.com");
 

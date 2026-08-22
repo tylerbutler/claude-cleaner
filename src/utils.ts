@@ -154,13 +154,8 @@ export type ErrorCode =
   | "BACKUP_CREATION_FAILED"
   | "BACKUP_ERROR"
   | "BACKUP_FAILED"
-  | "BFG_DOWNLOAD_ERROR"
-  | "BFG_DOWNLOAD_FAILED"
-  | "BFG_DOWNLOAD_VERIFICATION_FAILED"
-  | "BFG_ERROR"
-  | "BFG_NOT_AVAILABLE"
-  | "BFG_NOT_FOUND"
   | "COMMIT_CLEANING_FAILED"
+  | "COMMIT_CLEANING_VERIFICATION_FAILED"
   | "COMMIT_LIST_FAILED"
   | "COMMIT_MESSAGE_FAILED"
   | "DEPENDENCY_CHECK_FAILED"
@@ -169,23 +164,17 @@ export type ErrorCode =
   | "FILTER_BRANCH_FAILED"
   | "GET_BRANCH_FAILED"
   | "GIT_VALIDATION_FAILED"
-  | "INVALID_FILENAME"
+  | "INTERNAL_FILTER_INDEX_RM_FAILED"
+  | "INTERNAL_FILTER_MANIFEST_READ_FAILED"
+  | "INTERNAL_FILTER_MISSING_MANIFEST"
+  | "INTERNAL_FILTER_UNKNOWN_MODE"
   | "INVALID_OPTIONS"
   | "INVALID_PATTERN"
-  | "JAVA_CONFIG_FAILED"
-  | "JAVA_INSTALL_ERROR"
-  | "JAVA_INSTALL_FAILED"
-  | "MISE_INSTALL_FAILED"
-  | "MISE_NOT_FOUND"
   | "MISSING_DEPENDENCIES"
   | "NOT_GIT_REPO"
   | "REPO_PATH_REQUIRED"
+  | "REVISION_RANGE_INVALID"
   | "SCAN_ERROR"
-  | "SD_CONFIG_FAILED"
-  | "SD_INSTALL_ERROR"
-  | "SD_INSTALL_FAILED"
-  | "SD_NOT_AVAILABLE"
-  | "UNSUPPORTED_PLATFORM"
   | "WORKING_TREE_CHECK_FAILED"
   | "WORKING_TREE_DIRTY";
 
@@ -251,8 +240,10 @@ export function checkForMissingDependencies(
     for (const dep of missingDeps) {
       logger.error(`  - ${dep.tool}: ${dep.error || "not found"}`);
     }
-    logger.info(
-      "Run with --auto-install to install dependencies automatically",
+    logger.error(
+      `\n${missingDeps.length} required ${
+        missingDeps.length === 1 ? "dependency is" : "dependencies are"
+      } missing. Please install Git and ensure it is available on your PATH.`,
     );
     throw new AppError("Missing dependencies", "MISSING_DEPENDENCIES");
   }
